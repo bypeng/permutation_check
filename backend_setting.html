@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Final Mission 大關主後台</title>
+    <style>
+        :root {
+            --item-font-size: 1.35rem;
+        }
+        html { box-sizing: border-box; overflow-x: hidden; }
+        *, *:before, *:after { box-sizing: inherit; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            max-width: 100%;
+            min-width: 0;
+        }
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 15px 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        h2 {
+            margin-top: 0;
+            font-size: 1.8rem;
+            text-align: center;
+            color: #2c3e50;
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .panel {
+            background: #fff;
+            border: 2px solid #dee2e6; 
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .panel h3 {
+            margin-top: 0;
+            text-align: left;
+            border-bottom: 1px dashed #ccc;
+            padding-bottom: 10px;
+            font-size: 1.4rem;
+            color: #198754;
+            margin-bottom: 15px;
+        }
+        
+        /* 設定項目排版 */
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 10px;
+            border-bottom: 1px solid #f1f3f5;
+            font-size: 1.2rem;
+        }
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+        .setting-label {
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        /* 左右撥動開關 (Toggle Switch) */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 56px;
+            height: 30px;
+            margin: 0;
+            flex-shrink: 0;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc; transition: .4s; border-radius: 30px;
+        }
+        .slider:before {
+            position: absolute; content: "";
+            height: 22px; width: 22px; left: 4px; bottom: 4px;
+            background-color: white; transition: .4s; border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input:checked + .slider { background-color: #198754; }
+        input:checked + .slider:before { transform: translateX(26px); }
+
+        /* 按鈕樣式 */
+        .btn-verify {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.3rem;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background-color: #0d6efd;
+            transition: background-color 0.2s;
+            font-weight: bold;
+            margin-top: 10px;
+            box-shadow: 0 4px 6px rgba(13,110,253,0.2);
+        }
+        .btn-verify:hover { background-color: #0b5ed7; }
+        .btn-verify:disabled { background-color: #6c757d; cursor: not-allowed; box-shadow: none; }
+        
+        /* 登入畫面相關樣式 */
+        #login-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(249, 249, 249, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .login-box {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 95%;
+            max-width: 600px;
+            padding: 50px 30px;
+        }
+        .login-box h3 { margin-top: 0; color: #333; font-size: 2rem; }
+        .login-box input {
+            width: 100%;
+            padding: 20px;
+            margin: 30px 0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 28px;
+        }
+        .btn-login { background-color: #198754; box-shadow: 0 4px 6px rgba(25,135,84,0.2); }
+        .btn-login:hover { background-color: #157347; }
+
+    </style>
+</head>
+<body>
+
+<div id="login-overlay">
+    <div class="login-box">
+        <h3>大關主驗證</h3>
+        <input type="password" id="password-input" placeholder="請輸入後台專用密碼...">
+        <button id="login-btn" class="btn-verify btn-login">進入後台</button>
+        <p id="login-error" style="color: red; display: none; margin-top: 20px; font-size: 1.3rem;">密碼錯誤，請重試！</p>
+    </div>
+</div>
+
+<div class="container" style="display: none;">
+    <h2>Final Mission 大關主後台</h2>
+    
+    <!-- 第一段落：系統模式設定 -->
+    <div class="panel">
+        <h3>系統存取模式</h3>
+        <div class="setting-item">
+            <div class="setting-label">
+                啟用無密碼模式<br>
+                <small style="color: #6c757d; font-size: 0.95rem;">(開啟後，前台不需輸入密碼即可直接進入)</small>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="toggle-password-free">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <!-- 第二段落：晉級名單設定 -->
+    <div class="panel">
+        <h3>晉級挑戰隊伍名單</h3>
+        <div id="team-list-container">
+            <!-- JS 將動態產生名單開關 -->
+        </div>
+    </div>
+
+    <button id="save-btn" class="btn-verify">💾 儲存並套用設定</button>
+</div>
+
+<script>
+    let currentAdminPassword = '';
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const loginBtn = document.getElementById('login-btn');
+        const passwordInput = document.getElementById('password-input');
+        
+        function attemptLogin() {
+            const pwd = passwordInput.value;
+            document.getElementById('login-error').style.display = 'none';
+            passwordInput.blur();
+            loginBtn.textContent = '驗證中...';
+            loginBtn.disabled = true;
+
+            setTimeout(() => {
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run
+                        .withSuccessHandler(response => {
+                            if (response.success) {
+                                currentAdminPassword = pwd;
+                                initBackend(response.data);
+                            } else {
+                                document.getElementById('login-error').style.display = 'block';
+                                loginBtn.textContent = '進入後台';
+                                loginBtn.disabled = false;
+                            }
+                        }).getSystemSettings(pwd);
+                } else {
+                    // 單機測試模式
+                    if (pwd === 'NEVERTELLOTHERS') {
+                        currentAdminPassword = pwd;
+                        initBackend({
+                            isPasswordFree: false,
+                            advancedTeams: [1, 2, 4], // 預設 3 組晉級
+                            allPlayers: [
+                                {"id": 1, "p1name": "餅餅", "p2name": "小當家", "relationship": "模範夫妻"},
+                                {"id": 2, "p1name": "昆哥", "p2name": "凱姐", "relationship": "老夫老妻"},
+                                {"id": 3, "p1name": "小玥", "p2name": "Linda", "relationship": "女性代表"},
+                                {"id": 4, "p1name": "逍遙", "p2name": "恩慈", "relationship": "密逃拍擋"}
+                            ]
+                        });
+                    } else {
+                        document.getElementById('login-error').style.display = 'block';
+                        loginBtn.textContent = '進入後台';
+                        loginBtn.disabled = false;
+                    }
+                }
+            }, 400);
+        }
+        loginBtn.addEventListener('click', attemptLogin);
+        passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') attemptLogin(); });
+
+        document.getElementById('save-btn').addEventListener('click', function() {
+            const saveBtn = this;
+            saveBtn.textContent = '儲存中...';
+            saveBtn.disabled = true;
+
+            const isPasswordFree = document.getElementById('toggle-password-free').checked;
+            const advancedTeams = Array.from(document.querySelectorAll('.team-toggle:checked')).map(cb => parseInt(cb.value, 10));
+
+            const settings = { isPasswordFree, advancedTeams };
+
+            if (typeof google !== 'undefined' && google.script) {
+                google.script.run
+                    .withSuccessHandler(res => {
+                        saveBtn.textContent = '💾 儲存並套用設定';
+                        saveBtn.disabled = false;
+                        if (res.success) {
+                            alert('✅ 設定已成功儲存！所有前台畫面重新整理後將套用新設定。');
+                        } else {
+                            alert('儲存失敗：' + res.error);
+                        }
+                    }).saveSystemSettings(currentAdminPassword, settings);
+            } else {
+                setTimeout(() => {
+                    console.log("[單機模擬] 儲存設定:", settings);
+                    alert('✅ [單機模擬] 設定已成功儲存！');
+                    saveBtn.textContent = '💾 儲存並套用設定';
+                    saveBtn.disabled = false;
+                }, 800);
+            }
+        });
+    });
+
+    function initBackend(data) {
+        document.getElementById('login-overlay').style.display = 'none';
+        document.querySelector('.container').style.display = 'flex';
+
+        // 設定密碼模式開關
+        document.getElementById('toggle-password-free').checked = data.isPasswordFree;
+
+        // 產生晉級隊伍清單
+        const listContainer = document.getElementById('team-list-container');
+        listContainer.innerHTML = '';
+        
+        const advancedSet = new Set(data.advancedTeams.map(id => id.toString()));
+
+        data.allPlayers.forEach(team => {
+            const isChecked = advancedSet.has(team.id.toString()) ? 'checked' : '';
+            
+            const itemHtml = `
+                <div class="setting-item">
+                    <div class="setting-label">${team.p1name} ${team.p2name} (${team.relationship})</div>
+                    <label class="switch">
+                        <input type="checkbox" class="team-toggle" value="${team.id}" ${isChecked}>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            `;
+            listContainer.insertAdjacentHTML('beforeend', itemHtml);
+        });
+    }
+</script>
+</body>
+</html>
