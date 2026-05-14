@@ -3,9 +3,18 @@ const ADMIN_PASSWORD = 'NEVERTELLOTHERS'; // 大關主後台密碼
 const SECRET_PASSWORD = '87654321';       // 正式有密碼版本的通關密碼
 const DUMMY_PASSWORD = '12345678';        // 無密碼版本的防呆自動驗證密碼
 
+// --- Line API 設定 ---
+// 請將你的 Channel Access Token 填入下方引號內
+const LINE_CHANNEL_ACCESS_TOKEN = '(去 Messenging API 撈 Channel access token)';
+const LINE_REGISTER_KEYWORD = '/取得groupID'; // 可自行修改為你測試成功的密語
+// 【安全防護】請將剛剛在後台複製的 Your user ID 填入下方
+const LINE_ADMIN_BYPENG_ID = '(百片 的 User ID)';
+const LINE_ADMIN_RCOT_ID = '(紅椰 的 User ID)';
+const LINE_ADMIN_JING_ID = '(文鈞 的 User ID)';
+
 // 轉播系統使用的 Google Sheets 設定
 // TODO: 請建立一個新的 Google 試算表，並將其 ID 填入下方
-const LIVE_SPREADSHEET_ID = '16iz-8FNN7nrseqUE93QOB2zjureV1k_Cisi-IoDFGP0'; 
+const LIVE_SPREADSHEET_ID = '(去雲端硬碟抓 Google Sheets 的 Spreadsheet ID)'; 
 const LIVE_SHEET_NAME = 'LiveStatus';
 
 // 取得是否為無密碼模式 (具備明確的初始化防呆)
@@ -119,7 +128,7 @@ function saveSystemSettings(inputPassword, settings) {
 
 // 供前端呼叫的轉播狀態同步函式
 function syncLiveStatus(payload) {
-  // payload 預期格式: { teamId: "1", currentSequence: [40, 38, ...], lisLength: 5, totalCount: 10 }
+  // payload 預期格式: { teamId: "1", currentSequence: [...], lisLength: 5, totalCount: 10, isAttempt: true/false }
   
   // 使用 LockService 防止多人同時寫入造成資料覆蓋或衝突
   const lock = LockService.getScriptLock();
@@ -139,7 +148,7 @@ function syncLiveStatus(payload) {
 
     // 檢查工作表是否為空 (沒有標題列)，若為空則自動寫入標題列並凍結
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['隊號(系統內用)', '隊伍名稱', '最後更新時間', '木條數量', '最長遞增序列長度', '木條編號序列JSON']);
+      sheet.appendRow(['隊號(系統內用)', '隊伍名稱', '最後更新時間', '木條數量', '最長遞增序列長度', '驗收次數', '木條編號序列JSON']);
       sheet.setFrozenRows(1); // 凍結第一列標題
     }
 
@@ -154,19 +163,32 @@ function syncLiveStatus(payload) {
 
     // 尋找該隊伍是否已經有紀錄 (i=1 略過標題列)
     let rowIndex = -1;
+    let attemptCount = 0;
     for (let i = 1; i < data.length; i++) {
       if (data[i][0].toString() === teamId) {
         rowIndex = i + 1; // GAS 的 Row 是從 1 開始算
+        attemptCount = parseInt(data[i][5]) || 0; // 讀取目前的驗收次數 (F欄, index 5)
         break;
       }
     }
 
+    let newAttemptCount = attemptCount;
+    // 只有當前端明確傳送 isAttempt = true (按下驗收按鈕) 且排滿 40 片時，才算一次正式的驗收，次數加一
+    if (payload.isAttempt && payload.totalCount === 40) {
+      newAttemptCount += 1;
+    }
+
     if (rowIndex !== -1) {
-      // 更新現有隊伍資料 (B欄到F欄)
-      sheet.getRange(rowIndex, 2, 1, 5).setValues([[teamName, now, payload.totalCount || 0, payload.lisLength || 0, sequenceStr]]);
+      // 更新現有隊伍資料 (B欄到G欄)
+      sheet.getRange(rowIndex, 2, 1, 6).setValues([[teamName, now, payload.totalCount || 0, payload.lisLength || 0, newAttemptCount, sequenceStr]]);
     } else {
       // 若無紀錄則新增一列
-      sheet.appendRow([teamId, teamName, now, payload.totalCount || 0, payload.lisLength || 0, sequenceStr]);
+      sheet.appendRow([teamId, teamName, now, payload.totalCount || 0, payload.lisLength || 0, newAttemptCount, sequenceStr]);
+    }
+
+    // --- 檢查是否排滿 40 片且為正式驗收，並觸發推播 ---
+    if (payload.isAttempt && payload.totalCount === 40) {
+      sendLinePushNotification(teamId, teamName, payload.lisLength, newAttemptCount);
     }
     
     // 寫入成功後，主動清除讀取快取，讓儀表板能立刻抓到最新進度
@@ -178,6 +200,61 @@ function syncLiveStatus(payload) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// 負責發送「驗收結果」的推播訊息
+function sendLinePushNotification(teamId, teamName, lisLength, attemptCount) {
+  const props = PropertiesService.getScriptProperties();
+  const groupId = props.getProperty('LINE_GROUP_ID');
+  
+  // 1. 如果尚未綁定群組，則不執行推播
+  if (!groupId) return;
+  
+  const isSuccess = lisLength === 40;
+  
+  // 2. 智慧防連發機制：除了紀錄時間，也記錄上次的「驗收狀態」
+  const cooldownKey = 'NOTIFY_COOLDOWN_' + teamId;
+  const lastNotifyData = props.getProperty(cooldownKey);
+  let lastNotifyTime = 0;
+  let lastNotifyWasSuccess = null;
+  
+  if (lastNotifyData) {
+    const parts = lastNotifyData.split('_');
+    lastNotifyTime = parseInt(parts[0]);
+    lastNotifyWasSuccess = parts[1] === 'true';
+  }
+  
+  const now = new Date().getTime();
+  const NOTIFY_COOLDOWN_SECONDS = 5; // 冷卻時間縮短為 5 秒
+  
+  // 若狀態不變 (例如連兩次失敗) 且在 5 秒內，才判定為前端誤觸；若狀態改變 (如失敗變成功)，則直接放行
+  if (isSuccess === lastNotifyWasSuccess && (now - lastNotifyTime < NOTIFY_COOLDOWN_SECONDS * 1000)) {
+    return; 
+  }
+  
+  // 3. 組合推播訊息
+  const resultText = isSuccess ? '驗收成功！' : '驗收失敗。';
+  const icon = isSuccess ? '🎉' : '⚠️';
+  const messageText = `${icon} [第 ${attemptCount} 次驗收] ${icon}\n隊伍「${teamName}」\n最長序列為 ${lisLength} 片，${resultText}`;
+  
+  const url = 'https://api.line.me/v2/bot/message/push';
+  const payload = {
+    'to': groupId,
+    'messages': [{'type': 'text', 'text': messageText}]
+  };
+  const options = {
+    'method': 'post',
+    'muteHttpExceptions': true, // 避免 Line API 發生錯誤時導致主程式當機
+    'headers': {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + LINE_CHANNEL_ACCESS_TOKEN
+    },
+    'payload': JSON.stringify(payload)
+  };
+  
+  // 發送請求，並在成功後更新冷卻時間戳與狀態
+  UrlFetchApp.fetch(url, options);
+  props.setProperty(cooldownKey, now.toString() + '_' + isSuccess);
 }
 
 // 供前端儀表板呼叫的讀取 API，具備 CacheService 快取機制防護
@@ -215,7 +292,8 @@ function getLiveStatus() {
         lastUpdated: row[2], // 日期時間
         totalCount: row[3],
         lisLength: row[4],
-        currentSequence: JSON.parse(row[5] || '[]')
+        attemptCount: row[5],
+        currentSequence: JSON.parse(row[6] || '[]')
       });
     }
 
@@ -226,6 +304,102 @@ function getLiveStatus() {
   } catch (e) {
     return { success: false, error: e.toString() };
   }
+}
+
+// --- Line Webhook 接收器 (用於自動綁定群組) ---
+function doPost(e) {
+  if (typeof e === 'undefined' || !e.postData || !e.postData.contents) {
+    return ContentService.createTextOutput("Error: No data");
+  }
+
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const events = data.events;
+
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+
+      // 確保是群組內的文字訊息
+      if (event.type === 'message' && event.message.type === 'text' && event.source.type === 'group') {
+        const userMessage = event.message.text;
+        const replyToken = event.replyToken;
+        const groupId = event.source.groupId;
+        const userId = event.source.userId; // 抓取發言人的 User ID
+
+        // 如果收到的訊息等於我們設定的密語
+        if (userMessage === LINE_REGISTER_KEYWORD) {
+          // 【安全防護】判斷發言人是哪位大關主
+          let adminName = '';
+          if (userId === LINE_ADMIN_BYPENG_ID) {
+            adminName = '百片';
+          } else if (userId === LINE_ADMIN_RCOT_ID) {
+            adminName = '紅椰';
+          } else if (userId === LINE_ADMIN_JING_ID) {
+            adminName = '文鈞';
+          }
+
+          // 如果都不符合，回傳錯誤訊息並印出 ID
+          if (adminName === '') {
+            //replyToLine(replyToken, '❌ 權限驗證失敗！\n系統辨識到你的 User ID 為：\n' + userId + '\n\n請確認是否與 Code.gs 中的大關主 User ID 一致。');
+            replyToLine(replyToken, '❌ 權限驗證失敗！\n系統辨識到你的 User ID 不是大關主名單一員。');
+            continue;
+          }
+
+          // 將 Group ID 存入系統環境變數中
+          const props = PropertiesService.getScriptProperties();
+          props.setProperty('LINE_GROUP_ID', groupId);
+          
+          // 回覆成功訊息給群組
+          const replyText = `✅ ${adminName} 已經綁定群組成功！\n已將此群組設為 Final Mission 進度通報專線。`;
+          replyToLine(replyToken, replyText);
+        }
+      }
+    }
+  } catch (err) {
+    // 錯誤防護，避免影響 GAS 執行
+    console.error(err);
+  }
+
+  // 必須回傳 200 OK 給 Line
+  return ContentService.createTextOutput("OK");
+}
+
+// 負責發送回覆訊息給 Line
+function replyToLine(replyToken, text) {
+  const url = 'https://api.line.me/v2/bot/message/reply';
+  const payload = {
+    'replyToken': replyToken,
+    'messages': [{'type': 'text', 'text': text}]
+  };
+  const options = {
+    'method': 'post',
+    'headers': {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + LINE_CHANNEL_ACCESS_TOKEN
+    },
+    'payload': JSON.stringify(payload)
+  };
+  UrlFetchApp.fetch(url, options);
+}
+
+// --- 除錯專用：測試授權與 Token 是否正確 ---
+function testLineToken() {
+  const url = 'https://api.line.me/v2/bot/message/push';
+  const payload = {
+    'to': LINE_ADMIN_BYPENG_ID, // 除錯發送測試訊息，預設發給百片
+    'messages': [{'type': 'text', 'text': '✅ 系統發送測試：Token 與授權皆正常！'}]
+  };
+  const options = {
+    'method': 'post',
+    'muteHttpExceptions': true, // 即使有錯誤也不會中斷程式，方便印出錯誤訊息
+    'headers': {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + LINE_CHANNEL_ACCESS_TOKEN
+    },
+    'payload': JSON.stringify(payload)
+  };
+  const response = UrlFetchApp.fetch(url, options);
+  console.log('LINE API 回應：', response.getContentText());
 }
 
 // 將原本的 JSON 資料直接宣告在後端，避免透過獨立檔案外流

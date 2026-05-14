@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Final Mission 驗收系統 (v4 砍掉重練純淨版)</title>
+    <!-- 引入 SortableJS -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <style>
+        :root {
+            --item-font-size: 1.35rem; /* 字體全面放大 */
+            --max-chars: 10;
+        }
+        html {
+            box-sizing: border-box;
+            overflow-x: hidden;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            max-width: 100%;
+            min-width: 0; /* 破解 Safari Flexbox 拒絕縮小 Bug */
+        }
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 15px 30px 15px 20px;
+            min-width: 0; /* 破解 Safari Flexbox 拒絕縮小 Bug */
+            width: 100%;
+        }
+        h2 {
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+        p {
+            color: #666;
+            font-size: 0.95rem;
+            margin-bottom: 20px;
+        }
+        .layout-wrapper {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex: 1;
+            min-width: 0; /* 破解 Safari Flexbox 拒絕縮小 Bug */
+            width: 100%;
+        }
+        .panel {
+            flex: 1;
+            background: #fff;
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            width: 100%;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .panel h3 {
+            margin-top: 0;
+            text-align: center;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 10px;
+        }
+        .list-group {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        /* 乾淨的外層容器：不含任何影響拖曳判定的直書屬性或奇怪的 touch-action */
+        .list-item {
+            margin: 6px; /* 縮小方塊之間的間距 */
+            padding: 0;
+            flex-shrink: 0; /* 確保方塊寬度不會被 flex 壓縮 */
+            width: 3.3rem; /* 修正 typo，改回正確的 rem 單位，讓方塊寬度能隨著字體大小按比例彈性縮放 */
+            display: flex; /* 將外層設為 flex 容器 */
+            justify-content: center; /* 讓內層的直書內容在方塊寬度中完美水平置中 */
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            cursor: grab;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .list-item:active {
+            cursor: grabbing;
+        }
+        /* 乾淨的內層容器：專心處理文字直書與高度，不干涉 SortableJS */
+        .item-content {
+            padding: 10px 14px; /* 縮小內距，讓整體不要太肥大 */
+            display: inline-block; /* 改用 inline-block，讓 Safari 更好地計算 shrink-wrap 寬度 */
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            height: calc(var(--max-chars) * var(--item-font-size) + 50px);
+            font-size: var(--item-font-size);
+            white-space: nowrap;
+            line-height: 1.2; /* 稍微縮小行高 */
+        }
+        /* 最標準的 LTR Flex 容器 */
+        #source-list, #target-list {
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            direction: ltr; /* LTR 確保所有平台的原生拖曳都不會錯亂 */
+            overflow-x: auto;
+            overscroll-behavior-x: none;
+            transform: translateZ(0);
+            overflow-y: hidden;
+            min-height: calc(var(--max-chars) * var(--item-font-size) + 50px);
+            contain: paint; /* 物理隔離 Safari 的渲染引擎，防止捲軸內部寬度向外污染父容器 */
+            width: 100%; /* 解決 Safari 放大後縮回時，捲軸容器拒絕縮小導致超出螢幕的 WebKit Bug */
+            max-width: 100%;
+            min-width: 0; /* 破解 Safari Flexbox 拒絕縮小 Bug */
+        }
+        .number-prefix {
+            text-combine-upright: all;
+            margin-bottom: 0.4em;
+        }
+        #source-list .list-item, #target-list .list-item {
+            margin: 0 8px;
+        }
+        .list-item.lis-highlight {
+            background-color: #d1e7dd;
+            border-color: #badbcc;
+            color: #0f5132;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .sortable-ghost {
+            opacity: 0.4;
+            background-color: #e2e3e5;
+        }
+        .sortable-fallback, .sortable-drag {
+            z-index: 9999 !important;
+            opacity: 0.9 !important;
+        }
+        #login-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(249, 249, 249, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .login-box {
+            background: #fff;
+            padding: 30px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 95%; /* 再度放大至幾乎滿版 */
+            max-width: 600px;
+            padding: 50px 30px;
+        }
+        .login-box h3 { margin-top: 0; color: #333; font-size: 2.5rem; } /* 標題再放大 */
+        .login-box input {
+            width: 100%;
+            padding: 20px;
+            margin: 30px 0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 32px; /* 單純改用絕對單位 px，避免 Firefox 解析 rem 的時間差。堅決不加 touch-action！ */
+        }
+        /* 增加權重以覆蓋後方的 btn-verify 設定 */
+        .login-box .btn-login {
+            background-color: #198754;
+            font-size: 2rem; /* 按鈕文字也再放大 */
+            padding: 20px;
+        }
+        .login-box .btn-login:hover { background-color: #157347; }
+        .btn-small {
+            font-size: 0.85rem;
+            padding: 5px 10px;
+            margin-left: 10px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-small:hover { background-color: #5a6268; }
+        .btn-verify, .btn-reset {
+            width: 100%;
+            margin-top: auto;
+            padding: 15px;
+            font-size: 1.2rem;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-verify { background-color: #0d6efd; }
+        .btn-verify:hover { background-color: #0b5ed7; }
+        .btn-verify:disabled { background-color: #6c757d; cursor: not-allowed; opacity: 0.8; }
+        .btn-reset { background-color: #dc3545; }
+        .btn-reset:hover { background-color: #c82333; }
+        .result-panel {
+            margin-top: 25px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 6px;
+        }
+        .result-panel strong {
+            display: inline-block;
+            width: 100px;
+        }
+        /* 轉播控制區 UI */
+        .live-controls {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin: 10px 0 20px 0;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.1rem;
+        }
+        #team-select {
+            padding: 8px 12px;
+            font-size: 1.1rem;
+            border-radius: 6px;
+            border: 1px solid #ced4da;
+            background-color: #fff;
+            max-width: 100%;
+        }
+        /* 左右撥動開關 (Toggle Switch) */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 56px;
+            height: 30px;
+            margin: 0;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 30px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input:checked + .slider {
+            background-color: #198754;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        /* 轉播模式視覺提示 */
+        .target-panel.live-mode {
+            background-color: #fff0f0; /* 淡淡的紅色 */
+            border-color: #ffc2c2;
+        }
+        body.layout-portrait {
+            --item-font-size: 1.65rem; /* 手機版字體再度放大 */
+        }
+        body.layout-portrait .container {
+            padding: 10px 30px 10px 10px;
+        }
+        body.layout-portrait .layout-wrapper {
+            flex-direction: column;
+        }
+        body.layout-portrait .layout-wrapper .source-panel { order: 2; }
+        body.layout-portrait .layout-wrapper .target-panel { order: 1; }
+        body.layout-portrait .item-content {
+            padding: 12px 16px; /* 手機版也相應縮小留白 */
+        }
+        body.layout-portrait p {
+            font-size: 1.1rem;
+        }
+        body.layout-portrait .live-controls {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="login-overlay">
+    <div class="login-box">
+        <h3>請輸入通關密碼</h3>
+        <input type="password" id="password-input" placeholder="請輸入密碼...">
+        <button id="login-btn" class="btn-verify btn-login">進入系統</button>
+        <p id="login-error" style="color: red; display: none; margin-top: 20px; font-size: 1.5rem;">密碼錯誤，請重試！</p>
+    </div>
+</div>
+
+<div class="container">
+    <h2>Final Mission 驗收系統</h2>
+    
+    <div class="live-controls">
+        <div class="control-group">
+            <label for="team-select"><strong>驗收隊伍：</strong></label>
+            <select id="team-select">
+                <option value="">請選擇隊伍...</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <strong>啟動轉播：</strong>
+            <label class="switch">
+                <input type="checkbox" id="live-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <p>請將「待選區」的項目拖曳至「排列區」中。採用古中文直式書寫（由右至左閱讀）。完成後請點擊「驗收」按鈕，檢查木片總數與 LIS 長度都要是 <span id="target-poem-count">40</span> 。</p>
+
+    <div class="layout-wrapper">
+        <div class="panel source-panel">
+            <h3><span id="source-title-text">待選區</span> <button id="resort-btn" class="btn-small">重排</button></h3>
+            <ul id="source-list" class="list-group"></ul>
+            <button id="reset-all-btn" class="btn-reset">全部重設</button>
+        </div>
+
+        <div class="panel target-panel">
+            <h3><span id="target-title-text">排列區</span></h3>
+            <ul id="target-list" class="list-group"></ul>
+            <button id="verify-btn" class="btn-verify">驗收</button>
+        </div>
+    </div>
+
+    <div class="result-panel">
+        <div><strong>木片數量:</strong> <span id="item-count">0</span></div>
+        <div style="margin-top: 8px;"><strong>LIS 長度:</strong> <span id="lis-length">0</span></div>
+    </div>
+</div>
+
+<script>
+    // --- 全域防縮放機制 (Anti-Zoom) ---
+    
+    // 1. 阻止雙指捏合縮放 (Pinch-to-zoom)
+    document.addEventListener('touchstart', function(event) {
+        if (event.touches.length > 1) {
+            event.preventDefault(); // 偵測到兩根以上的手指，立刻阻止預設縮放
+        }
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function(event) {
+        if (event.touches.length > 1) {
+            event.preventDefault(); // 滑動時也全程阻止多指行為
+        }
+    }, { passive: false });
+
+    // 2. 阻止 Safari/Chrome 連續雙擊空白處放大畫面 (Double-tap to zoom)
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function(event) {
+        const now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) {
+            // 排除輸入框，保留原生的雙擊選取文字功能
+            if (event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
+                event.preventDefault();
+            }
+        }
+        lastTouchEnd = now;
+    }, { passive: false });
+
+    document.addEventListener("DOMContentLoaded", async function() {
+        const sourceList = document.getElementById('source-list');
+        const targetList = document.getElementById('target-list');
+
+        function checkLayout() {
+            if (window.innerHeight > window.innerWidth) {
+                document.body.classList.add('layout-portrait');
+            } else {
+                document.body.classList.remove('layout-portrait');
+            }
+        }
+        
+        window.addEventListener('resize', checkLayout);
+        window.addEventListener('orientationchange', () => setTimeout(checkLayout, 150));
+        checkLayout();
+
+        const loginBtn = document.getElementById('login-btn');
+        const passwordInput = document.getElementById('password-input');
+        const loginError = document.getElementById('login-error');
+
+        function attemptLogin() {
+            const pwd = passwordInput.value;
+            loginError.style.display = 'none';
+            
+            // 1. 強制收起鍵盤
+            passwordInput.blur();
+            loginBtn.textContent = '處理中...';
+            loginBtn.disabled = true;
+
+            // 2. 核心關鍵：等待 400 毫秒，讓 iOS 鍵盤完全收合，且 Safari 視角穩定後，再處理後續邏輯。
+            // 避免在畫面縮放/移動的動畫期間去計算 .container 的排版，導致寬度錯亂。
+            setTimeout(() => {
+                window.scrollTo(0, 0);
+
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run
+                        .withSuccessHandler(response => {
+                            loginBtn.textContent = '進入系統';
+                            loginBtn.disabled = false;
+                            if (response.success) {
+                                document.getElementById('login-overlay').style.display = 'none';
+                                renderPlayers(response.data.players || []);
+                                renderPoems(response.data.correctPoems, response.data.confusePoems);
+                                
+                                const container = document.querySelector('.container');
+                                container.style.display = 'flex';
+                            } else {
+                                loginError.style.display = 'block';
+                            }
+                        })
+                        .authenticateAndGetData(pwd);
+                } else {
+                    if (pwd === '12345678') { 
+                        fetchLocalPoemsAndRender().then(() => {
+                            document.getElementById('login-overlay').style.display = 'none';
+                            const container = document.querySelector('.container');
+                            container.style.display = 'flex';
+                            loginBtn.textContent = '進入系統';
+                            loginBtn.disabled = false;
+                        }).catch(() => {
+                            loginBtn.textContent = '進入系統';
+                            loginBtn.disabled = false;
+                        });
+                    } else {
+                        loginBtn.textContent = '進入系統';
+                        loginBtn.disabled = false;
+                        loginError.style.display = 'block';
+                    }
+                }
+            }, 400);
+        }
+
+        loginBtn.addEventListener('click', attemptLogin);
+        passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') attemptLogin(); });
+
+        function saveState() {
+            const sourceItems = Array.from(sourceList.querySelectorAll('.list-item')).map(item => item.dataset.value);
+            const targetItems = Array.from(targetList.querySelectorAll('.list-item')).map(item => item.dataset.value);
+            localStorage.setItem('poem_sort_state', JSON.stringify({ source: sourceItems, target: targetItems }));
+        }
+        
+        // --- 轉播狀態管理 ---
+        const teamSelect = document.getElementById('team-select');
+        const liveToggle = document.getElementById('live-toggle');
+
+        function renderPlayers(players) {
+            teamSelect.innerHTML = '<option value="">請選擇隊伍...</option>';
+            players.forEach(p => {
+                const option = document.createElement('option');
+                option.value = p.id;
+                option.textContent = `${p.p1name} ${p.p2name} (${p.relationship})`;
+                teamSelect.appendChild(option);
+            });
+
+            // 嘗試還原轉播設定狀態
+            const savedLiveState = JSON.parse(localStorage.getItem('live_state') || '{}');
+            if (savedLiveState.teamId) teamSelect.value = savedLiveState.teamId;
+            
+            // 確保每次重新載入時，轉播開關預設為關閉，並確保底色正常
+            liveToggle.checked = false;
+            document.querySelector('.target-panel').classList.remove('live-mode');
+        }
+
+        // --- 新增：靜默計算 LIS 長度 (供轉播使用，不影響畫面) ---
+        function calculateCurrentLIS() {
+            const listItems = Array.from(targetList.querySelectorAll('.list-item'));
+            const logicalItems = [...listItems].reverse(); 
+            const arr = logicalItems.map(item => parseInt(item.dataset.weight, 10));
+            
+            if (arr.length === 0) return 0;
+            const n = arr.length;
+            const dp = new Array(n).fill(1);
+            let maxLength = 0;
+            for (let i = 0; i < n; i++) {
+                if (arr[i] > 10000) { dp[i] = 0; continue; }
+                dp[i] = 1;
+                for (let j = 0; j < i; j++) {
+                    if (arr[j] > 10000) continue;
+                    if (arr[i] >= arr[j] && dp[i] < dp[j] + 1) dp[i] = dp[j] + 1;
+                }
+                if (dp[i] > maxLength) maxLength = dp[i];
+            }
+            return maxLength;
+        }
+
+        // --- 新增：轉播防抖與上傳邏輯 ---
+        let liveSyncTimer = null;
+        function triggerLiveSync(isAttempt = false) {
+            if (!liveToggle.checked || !teamSelect.value) return; // 未開啟轉播或未選隊伍則略過
+            clearTimeout(liveSyncTimer);
+            
+            const syncAction = () => {
+                const currentSequence = Array.from(targetList.querySelectorAll('.list-item')).map(item => parseInt(item.dataset.value, 10));
+                const payload = {
+                    teamId: teamSelect.value,
+                    currentSequence: currentSequence,
+                    totalCount: currentSequence.length,
+                    lisLength: calculateCurrentLIS(),
+                    isAttempt: isAttempt // 加入驗收標記
+                };
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run.withSuccessHandler(res => { if (!res.success) console.error("轉播同步失敗:", res.error); }).syncLiveStatus(payload);
+                } else {
+                    console.log("[單機模擬] 觸發轉播同步，準備上傳資料:", JSON.stringify(payload, null, 2));
+                }
+            };
+
+            // 如果是正式驗收，立刻執行上傳；否則延遲 2 秒防抖
+            if (isAttempt) {
+                syncAction();
+            } else {
+                liveSyncTimer = setTimeout(syncAction, 2000);
+            }
+        }
+
+        function saveLiveState() {
+            // 防呆：如果想開啟轉播但沒有選隊伍，自動切回關閉並提示
+            if (liveToggle.checked && !teamSelect.value) {
+                alert('請先選擇驗收隊伍，才能啟動轉播喔！');
+                liveToggle.checked = false;
+            }
+
+            // 更新 LocalStorage (不再儲存 isLive，確保重整必關閉)
+            localStorage.setItem('live_state', JSON.stringify({ teamId: teamSelect.value }));
+            
+            // 更新排列區的底色
+            const targetPanel = document.querySelector('.target-panel');
+            if (liveToggle.checked && teamSelect.value) {
+                targetPanel.classList.add('live-mode');
+            } else {
+                targetPanel.classList.remove('live-mode');
+            }
+
+            triggerLiveSync(); // 切換狀態或隊伍時主動觸發一次
+        }
+
+        teamSelect.addEventListener('change', saveLiveState);
+        liveToggle.addEventListener('change', saveLiveState);
+        
+        async function fetchLocalPoemsAndRender() {
+            const [correctResponse, confuseResponse, playersResponse] = await Promise.all([
+                fetch('./poem_correct.json'), 
+                fetch('./poem_confuse.json'),
+                fetch('./player.json').catch(() => null) // 若沒有產生 player.json 也能安全處理
+            ]);
+            
+            const correctPoems = await correctResponse.json();
+            const confusePoems = await confuseResponse.json();
+            
+            let players = [];
+            if (playersResponse && playersResponse.ok) {
+                try { players = await playersResponse.json(); } catch(e) {}
+            }
+            
+            renderPlayers(players);
+            renderPoems(correctPoems, confusePoems);
+        }
+
+        function renderPoems(correctPoems, confusePoems) {
+            document.getElementById('target-poem-count').textContent = correctPoems.length;
+            const allPoems = [...correctPoems, ...confusePoems];
+
+            let maxChars = 0;
+            allPoems.forEach(p => { if (p.firstText.length > maxChars) maxChars = p.firstText.length; });
+            document.documentElement.style.setProperty('--max-chars', maxChars + 4);
+
+            sourceList.innerHTML = ''; 
+            targetList.innerHTML = '';
+
+            const createPoemElement = (poem) => {
+                const li = document.createElement('li');
+                li.className = 'list-item';
+                li.dataset.value = poem.id;
+                li.dataset.weight = poem.weight;
+                li.dataset.showid = poem.showid;
+                li.dataset.firstText = poem.firstText; 
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'item-content';
+                const numberSpan = document.createElement('span');
+                numberSpan.className = 'number-prefix';
+                numberSpan.textContent = `[${poem.showid}]`;
+                contentDiv.appendChild(numberSpan);
+                contentDiv.appendChild(document.createTextNode(` ${poem.firstText} ⋮`));
+                li.appendChild(contentDiv);
+                return li;
+            };
+
+            // 嘗試讀取 LocalStorage 中的暫存狀態
+            const savedStateJson = localStorage.getItem('poem_sort_state');
+            let savedState = null;
+            if (savedStateJson) {
+                try { savedState = JSON.parse(savedStateJson); } catch (e) {}
+            }
+
+            if (savedState && savedState.source && savedState.target) {
+                const poemMap = new Map(allPoems.map(p => [p.id.toString(), p]));
+                
+                // 還原排列區
+                savedState.target.forEach(id => {
+                    if (poemMap.has(id)) { targetList.appendChild(createPoemElement(poemMap.get(id))); poemMap.delete(id); }
+                });
+                // 還原待選區
+                savedState.source.forEach(id => {
+                    if (poemMap.has(id)) { sourceList.appendChild(createPoemElement(poemMap.get(id))); poemMap.delete(id); }
+                });
+                // 處理可能新增的詩句 (將不在暫存清單中的項目補齊)
+                const remaining = Array.from(poemMap.values());
+                remaining.sort((a, b) => b.showid - a.showid); // 陣列反轉魔法：降冪排序
+                remaining.forEach(poem => sourceList.appendChild(createPoemElement(poem)));
+
+                // 更新初始木片數量顯示
+                document.getElementById('item-count').textContent = targetList.querySelectorAll('.list-item').length;
+            } else {
+                // LTR 模擬 RTL 魔法：預設載入時降冪排序 (大號碼在左，小號碼在右)
+                allPoems.sort((a, b) => b.showid - a.showid);
+                allPoems.forEach(poem => sourceList.appendChild(createPoemElement(poem)));
+            }
+
+            setTimeout(() => {
+                sourceList.scrollLeft = sourceList.scrollWidth;
+                targetList.scrollLeft = targetList.scrollWidth;
+            }, 50);
+        }
+
+        // --- 最乾淨的 SortableJS 初始化 (無任何干涉原生 API 的設定) ---
+        const sortableOptions = {
+            group: 'shared',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            delay: 200, 
+            delayOnTouchOnly: true,
+            onEnd: function () {
+                saveState();
+                document.getElementById('item-count').textContent = targetList.querySelectorAll('.list-item').length;
+                triggerLiveSync();
+            }
+        };
+        Sortable.create(sourceList, sortableOptions);
+        Sortable.create(targetList, sortableOptions);
+
+        // 新增：雙擊方塊自動跳到另一邊排尾
+        function handleItemDoubleClick(e) {
+            const item = e.target.closest('.list-item');
+            if (!item) return;
+
+            const parentList = item.parentElement;
+
+            if (parentList.id === 'source-list') {
+                const destinationList = targetList;
+                // 移動到排列區，因為是 LTR 容器，視覺上的"最左邊排尾"就是 DOM 的最前面 (firstChild)
+                destinationList.insertBefore(item, destinationList.firstChild);
+
+                // 新增：自動將排列區平滑捲動到最尾端 (最左側)，提供更好的視覺反饋
+                destinationList.scrollTo({ left: 0, behavior: 'smooth' });
+            } else if (parentList.id === 'target-list') {
+                const destinationList = sourceList;
+                // 移動到待選區，先暫時加入
+                destinationList.appendChild(item);
+                
+                // 接著對整個待選區重排，以確保順序正確
+                const items = Array.from(sourceList.querySelectorAll('.list-item'));
+                items.sort((a, b) => parseInt(b.dataset.showid, 10) - parseInt(a.dataset.showid, 10)); // 陣列反轉魔法：降冪
+                items.forEach(sortedItem => sourceList.appendChild(sortedItem));
+            }
+
+            saveState();
+            document.getElementById('item-count').textContent = targetList.querySelectorAll('.list-item').length;
+
+            if (parentList.id === 'target-list') {
+                document.getElementById('lis-length').textContent = '0';
+                document.querySelectorAll('.list-item.lis-highlight').forEach(el => el.classList.remove('lis-highlight'));
+            }
+            triggerLiveSync();
+        }
+
+        const wrapper = document.querySelector('.layout-wrapper');
+
+        // --- 針對手機的自訂雙擊偵測器 (Decoupled Double-Tap Handler) ---
+        let lastTapTime = 0;
+        let lastTapTarget = null;
+        wrapper.addEventListener('touchstart', function(e) {
+            if (!('ontouchstart' in window)) return;
+            const item = e.target.closest('.list-item');
+            if (!item) { lastTapTarget = null; return; }
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTapTime;
+            if (tapLength > 0 && tapLength < 300 && lastTapTarget === item) {
+                e.preventDefault(); // 1. 阻止瀏覽器預設的第二下放大行為，絕不干涉第一下的拖曳判定
+                e.target.dispatchEvent(new CustomEvent('custom-dblclick', { bubbles: true, cancelable: true })); // 2. 發送自訂事件
+                lastTapTime = 0; lastTapTarget = null;
+            } else { lastTapTime = currentTime; lastTapTarget = item; }
+        }, { passive: false });
+
+        // 同時監聽電腦的雙擊(dblclick)與我們自訂的手機雙擊(custom-dblclick)
+        wrapper.addEventListener('dblclick', handleItemDoubleClick);
+        wrapper.addEventListener('custom-dblclick', handleItemDoubleClick);
+
+        // 重排
+        document.getElementById('resort-btn').addEventListener('click', function() {
+            const items = Array.from(sourceList.querySelectorAll('.list-item'));
+            items.sort((a, b) => parseInt(b.dataset.showid, 10) - parseInt(a.dataset.showid, 10));
+            items.forEach(item => sourceList.appendChild(item));
+            saveState();
+            sourceList.scrollTo({ left: sourceList.scrollWidth, behavior: 'smooth' });
+        });
+
+        // 綁定全部重設按鈕事件
+        document.getElementById('reset-all-btn').addEventListener('click', function() {
+            if (confirm('你確定要全部重設嗎？')) {
+                // 1. 將排列區項目移回待選區
+                const targetItems = Array.from(targetList.querySelectorAll('.list-item'));
+                targetItems.forEach(item => sourceList.appendChild(item));
+                
+                // 2. 清除所有高亮狀態
+                document.querySelectorAll('.list-item').forEach(item => item.classList.remove('lis-highlight'));
+                
+                // 3. 對待選區進行重排
+                const allItems = Array.from(sourceList.querySelectorAll('.list-item'));
+                allItems.sort((a, b) => parseInt(b.dataset.showid, 10) - parseInt(a.dataset.showid, 10)); // 陣列反轉魔法：降冪
+                allItems.forEach(item => sourceList.appendChild(item));
+                
+                // 4. 重設面板數字並存檔
+                document.getElementById('item-count').textContent = '0';
+                document.getElementById('lis-length').textContent = '0';
+                saveState();
+                // 捲軸歸位
+                sourceList.scrollLeft = sourceList.scrollWidth;
+                triggerLiveSync();
+            }
+        });
+
+        // 驗收與 LIS 計算
+        document.getElementById('verify-btn').addEventListener('click', function() {
+            // --- 新增：前端物理按鈕鎖定防呆 ---
+            const btn = this;
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = '驗收中...';
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }, 2500); // 鎖定 2.5 秒
+
+            document.querySelectorAll('.list-item').forEach(item => item.classList.remove('lis-highlight'));
+            const listItems = Array.from(targetList.querySelectorAll('.list-item'));
+            const logicalItems = [...listItems].reverse(); // 邏輯反轉，供 LIS 正確計算
+            const arr = logicalItems.map(item => parseInt(item.dataset.weight, 10));
+            
+            if (arr.length === 0) return;
+            const n = arr.length;
+            const dp = new Array(n).fill(1);
+            const prev = new Array(n).fill(-1);
+            let maxLength = 0, maxIndex = -1;
+
+            for (let i = 0; i < n; i++) {
+                if (arr[i] > 10000) { dp[i] = 0; continue; }
+                dp[i] = 1;
+                for (let j = 0; j < i; j++) {
+                    if (arr[j] > 10000) continue;
+                    if (arr[i] >= arr[j] && dp[i] < dp[j] + 1) {
+                        dp[i] = dp[j] + 1;
+                        prev[i] = j;
+                    }
+                }
+                if (dp[i] > maxLength) { maxLength = dp[i]; maxIndex = i; }
+            }
+            const lisIndices = [];
+            let curr = maxIndex;
+            while (curr !== -1) {
+                lisIndices.unshift(curr);
+                curr = prev[curr];
+            }
+            logicalItems.forEach((item, index) => {
+                if (lisIndices.includes(index)) item.classList.add('lis-highlight');
+            });
+            document.getElementById('item-count').textContent = arr.length;
+            document.getElementById('lis-length').textContent = maxLength;
+            triggerLiveSync(true); // 傳入 true，代表這是一次正式的驗收
+        });
+    });
+</script>
+</body>
+</html>
