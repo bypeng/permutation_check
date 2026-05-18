@@ -16,6 +16,7 @@ const LINE_ADMIN_JING_ID = '(文鈞 的 User ID)';
 // TODO: 請建立一個新的 Google 試算表，並將其 ID 填入下方
 const LIVE_SPREADSHEET_ID = '(去雲端硬碟抓 Google Sheets 的 Spreadsheet ID)'; 
 const LIVE_SHEET_NAME = 'LiveStatus';
+const SUBMIT_RECORD_SHEET_NAME = 'SubmitRecord';
 
 // 取得是否為無密碼模式 (具備明確的初始化防呆)
 function getIsPasswordFree() {
@@ -187,23 +188,39 @@ function syncLiveStatus(payload) {
     }
 
     let newAttemptCount = attemptCount;
-    // 只有當前端明確傳送 isAttempt = true (按下驗收按鈕) 且排滿 40 片時，才算一次正式的驗收，次數加一
-    if (payload.isAttempt && payload.totalCount === 40) {
+    // 只要前端明確傳送 isAttempt = true (按下驗收按鈕)，才算一次正式的驗收，次數加一
+    if (payload.isAttempt) {
       newAttemptCount += 1;
     }
 
+    const liveStatusRowData = [teamName, now, payload.totalCount || 0, payload.lisLength || 0, newAttemptCount, sequenceStr];
+
     if (rowIndex !== -1) {
       // 更新現有隊伍資料 (B欄到G欄)
-      sheet.getRange(rowIndex, 2, 1, 6).setValues([[teamName, now, payload.totalCount || 0, payload.lisLength || 0, newAttemptCount, sequenceStr]]);
+      sheet.getRange(rowIndex, 2, 1, 6).setValues([liveStatusRowData]);
     } else {
       // 若無紀錄則新增一列
-      sheet.appendRow([teamId, teamName, now, payload.totalCount || 0, payload.lisLength || 0, newAttemptCount, sequenceStr]);
+      sheet.appendRow([teamId, ...liveStatusRowData]);
     }
 
-    // --- 檢查是否排滿 40 片且為正式驗收，並觸發推播 ---
-    // 只有在「正式驗收」、「排滿 40 片」且「後台開關為啟用」三個條件都滿足時，才觸發推播
-    if (payload.isAttempt && payload.totalCount === 40) {
-      if (getIsLineNotifyEnabled()) {
+    // --- 如果是正式驗收，則在 SubmitRecord 工作表附加一筆紀錄 ---
+    if (payload.isAttempt) {
+      const isLineEnabled = getIsLineNotifyEnabled(); // 取得當時大關主推播設定
+      let submitSheet = ss.getSheetByName(SUBMIT_RECORD_SHEET_NAME);
+      if (!submitSheet) {
+        submitSheet = ss.insertSheet(SUBMIT_RECORD_SHEET_NAME);
+      }
+      
+      // 檢查 SubmitRecord 工作表是否為空，若為空則自動寫入標題列
+      if (submitSheet.getLastRow() === 0) {
+        submitSheet.appendRow(['隊號(系統內用)', '隊伍名稱', '最後更新時間', '木條數量', '最長遞增序列長度', '驗收次數', '木條編號序列JSON', '推播設定狀態']);
+        submitSheet.setFrozenRows(1);
+      }
+      
+      submitSheet.appendRow([teamId, ...liveStatusRowData, isLineEnabled ? '開啟' : '關閉']);
+
+      // --- 若有開啟推播則發送 LINE 通知 ---
+      if (isLineEnabled) {
         sendLinePushNotification(teamId, teamName, payload.lisLength, newAttemptCount);
       }
     }

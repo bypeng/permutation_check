@@ -42,6 +42,13 @@
         h2 {
             margin-top: 0;
             font-size: 1.5rem;
+            margin-bottom: 0;
+        }
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
         }
         p {
             color: #666;
@@ -277,13 +284,42 @@
             align-items: flex-start;
             gap: 15px;
         }
+        /* 新增：LINE 狀態指示燈 */
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .status-indicator .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .status-indicator.enabled { background-color: #d1e7dd; color: #0f5132; }
+        .status-indicator.enabled .dot { background-color: #198754; }
+
+        .status-indicator.disabled { background-color: #e9ecef; color: #6c757d; }
+        .status-indicator.disabled .dot { background-color: #6c757d; }
+
+        .status-indicator.offline { background-color: #fff3cd; color: #664d03; }
+        .status-indicator.offline .dot { background-color: #ffc107; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Final Mission 驗收系統</h2>
-    
+    <div class="header-container">
+        <h2>Final Mission 驗收系統</h2>
+        <div id="line-status-indicator" class="status-indicator">
+            <span class="dot"></span>
+            <span class="text"></span>
+        </div>
+    </div>
     <div class="live-controls">
         <div class="control-group">
             <label for="team-select"><strong>驗收隊伍：</strong></label>
@@ -369,12 +405,33 @@
         window.addEventListener('orientationchange', () => setTimeout(checkLayout, 150));
         checkLayout();
 
+        // --- 新增：更新 LINE 狀態 UI ---
+        function updateLineStatusUI() {
+            const indicator = document.getElementById('line-status-indicator');
+            const textEl = indicator.querySelector('.text');
+            const isOffline = !(typeof google !== 'undefined' && google.script);
+
+            indicator.classList.remove('enabled', 'disabled', 'offline');
+
+            if (isOffline) {
+                indicator.classList.add('offline');
+                textEl.textContent = '單機模式';
+            } else if (isLineNotifyEnabled) {
+                indicator.classList.add('enabled');
+                textEl.textContent = 'LINE推播：開啟';
+            } else {
+                indicator.classList.add('disabled');
+                textEl.textContent = 'LINE推播：關閉';
+            }
+        }
+
         // --- 網頁載入後立即初始化資料 (免密碼) ---
         if (typeof google !== 'undefined' && google.script) {
             google.script.run
                 .withSuccessHandler(response => {
                     if (response.success) {
                         isLineNotifyEnabled = !!response.data.isLineNotifyEnabled;
+                        updateLineStatusUI();
                         renderPlayers(response.data.players || []);
                         renderPoems(response.data.correctPoems, response.data.confusePoems);
                     } else {
@@ -384,6 +441,7 @@
                 .authenticateAndGetData('12345678'); 
         } else {
             isLineNotifyEnabled = false; // 單機測試模式下，預設關閉
+            updateLineStatusUI();
             fetchLocalPoemsAndRender().catch(() => {
                 alert('本地資料載入失敗！');
             });
@@ -459,6 +517,7 @@
                         if (res.success) {
                             if (res.isLineNotifyEnabled !== undefined) {
                                 isLineNotifyEnabled = !!res.isLineNotifyEnabled; // 搭順風車更新推播設定
+                                updateLineStatusUI();
                             }
                         } else {
                             console.error("轉播同步失敗:", res.error); 
@@ -745,18 +804,9 @@
             document.getElementById('lis-length').textContent = maxLength;
 
             let isAttempt = false;
-            // 只有在排滿預定片數時，才進入是否為「正式驗收」的判斷
+            // 只要排滿預定片數，就詢問是否為正式驗收，後續的紀錄與推播邏輯由後端全權處理
             if (itemCount === targetPoemCount) {
-                // 如果後台有啟用 LINE 推播，則跳出對話框詢問關主
-                if (isLineNotifyEnabled) {
-                    isAttempt = confirm('這是一次參加者要求的驗收嗎？\n\n(選擇「是」將發送 LINE 推播並計次)');
-                } else {
-                    // LINE 推播總開關關閉時，一律視為進度同步，不計入正式驗收次數
-                    isAttempt = false;
-                }
-            } else {
-                // 未排滿時按下驗收，只算進度同步，不算正式驗收
-                isAttempt = false;
+                isAttempt = confirm('這是一次參加者要求的驗收嗎？');
             }
             triggerLiveSync(isAttempt);
         });
