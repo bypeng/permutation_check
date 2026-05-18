@@ -28,6 +28,17 @@ function getIsPasswordFree() {
   return val === 'true'; 
 }
 
+// 取得是否啟用 LINE 主動推播 (具備明確的初始化防呆)
+function getIsLineNotifyEnabled() {
+  const props = PropertiesService.getScriptProperties();
+  let val = props.getProperty('isLineNotifyEnabled');
+  if (val === null) {
+    props.setProperty('isLineNotifyEnabled', 'false'); // 第一次執行出廠時，強制寫入「關閉推播」
+    val = 'false';
+  }
+  return val === 'true';
+}
+
 // GAS 網頁應用程式的進入點
 function doGet(e) {
   // 取得系統設定
@@ -83,7 +94,8 @@ function authenticateAndGetData(inputPassword) {
       data: {
         correctPoems: POEM_CORRECT_DATA,
         confusePoems: POEM_CONFUSE_DATA,
-        players: activePlayers
+        players: activePlayers,
+        isLineNotifyEnabled: getIsLineNotifyEnabled() // 將 LINE 推播開關狀態一起傳給前台
       }
     };
   }
@@ -107,6 +119,7 @@ function getSystemSettings(inputPassword) {
     success: true,
     data: {
       isPasswordFree: getIsPasswordFree(),
+      isLineNotifyEnabled: getIsLineNotifyEnabled(),
       advancedTeams: advancedTeams,
       allPlayers: PLAYER_DATA // 傳送原始完整名單，供後台渲染核取方塊使用
     }
@@ -119,6 +132,7 @@ function saveSystemSettings(inputPassword, settings) {
   try {
     const props = PropertiesService.getScriptProperties();
     props.setProperty('isPasswordFree', settings.isPasswordFree ? 'true' : 'false');
+    props.setProperty('isLineNotifyEnabled', settings.isLineNotifyEnabled ? 'true' : 'false');
     props.setProperty('advancedTeams', JSON.stringify(settings.advancedTeams || []));
     return { success: true };
   } catch (e) {
@@ -187,14 +201,17 @@ function syncLiveStatus(payload) {
     }
 
     // --- 檢查是否排滿 40 片且為正式驗收，並觸發推播 ---
+    // 只有在「正式驗收」、「排滿 40 片」且「後台開關為啟用」三個條件都滿足時，才觸發推播
     if (payload.isAttempt && payload.totalCount === 40) {
-      sendLinePushNotification(teamId, teamName, payload.lisLength, newAttemptCount);
+      if (getIsLineNotifyEnabled()) {
+        sendLinePushNotification(teamId, teamName, payload.lisLength, newAttemptCount);
+      }
     }
     
     // 寫入成功後，主動清除讀取快取，讓儀表板能立刻抓到最新進度
     CacheService.getScriptCache().remove('LIVE_STATUS_CACHE');
     
-    return { success: true, timestamp: now.getTime() };
+    return { success: true, timestamp: now.getTime(), isLineNotifyEnabled: getIsLineNotifyEnabled() };
   } catch (e) {
     return { success: false, error: e.toString() };
   } finally {

@@ -387,8 +387,8 @@
     document.addEventListener('touchend', function(event) {
         const now = (new Date()).getTime();
         if (now - lastTouchEnd <= 300) {
-            // 排除輸入框，保留原生的雙擊選取文字功能
-            if (event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
+            // 排除輸入框與下拉選單，保留原生的雙擊選取文字功能與選單展開
+            if (event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA' && event.target.tagName !== 'SELECT') {
                 event.preventDefault();
             }
         }

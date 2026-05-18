@@ -396,6 +396,8 @@
     }, { passive: false });
 
     document.addEventListener("DOMContentLoaded", async function() {
+        let isLineNotifyEnabled = false; // 儲存 LINE 推播是否啟用的狀態
+
         const sourceList = document.getElementById('source-list');
         const targetList = document.getElementById('target-list');
 
@@ -436,6 +438,7 @@
                             loginBtn.disabled = false;
                             if (response.success) {
                                 document.getElementById('login-overlay').style.display = 'none';
+                                isLineNotifyEnabled = !!response.data.isLineNotifyEnabled;
                                 renderPlayers(response.data.players || []);
                                 renderPoems(response.data.correctPoems, response.data.confusePoems);
                                 
@@ -448,6 +451,7 @@
                         .authenticateAndGetData(pwd);
                 } else {
                     if (pwd === '12345678') { 
+                        isLineNotifyEnabled = false; // 單機測試模式下，預設關閉
                         fetchLocalPoemsAndRender().then(() => {
                             document.getElementById('login-overlay').style.display = 'none';
                             const container = document.querySelector('.container');
@@ -536,7 +540,15 @@
                     isAttempt: isAttempt // 加入驗收標記
                 };
                 if (typeof google !== 'undefined' && google.script) {
-                    google.script.run.withSuccessHandler(res => { if (!res.success) console.error("轉播同步失敗:", res.error); }).syncLiveStatus(payload);
+                    google.script.run.withSuccessHandler(res => { 
+                        if (res.success) {
+                            if (res.isLineNotifyEnabled !== undefined) {
+                                isLineNotifyEnabled = !!res.isLineNotifyEnabled; // 搭順風車更新推播設定
+                            }
+                        } else {
+                            console.error("轉播同步失敗:", res.error); 
+                        }
+                    }).syncLiveStatus(payload);
                 } else {
                     console.log("[單機模擬] 觸發轉播同步，準備上傳資料:", JSON.stringify(payload, null, 2));
                 }
@@ -811,9 +823,27 @@
             logicalItems.forEach((item, index) => {
                 if (lisIndices.includes(index)) item.classList.add('lis-highlight');
             });
-            document.getElementById('item-count').textContent = arr.length;
+
+            const itemCount = arr.length;
+            const targetPoemCount = parseInt(document.getElementById('target-poem-count').textContent, 10);
+            document.getElementById('item-count').textContent = itemCount;
             document.getElementById('lis-length').textContent = maxLength;
-            triggerLiveSync(true); // 傳入 true，代表這是一次正式的驗收
+
+            let isAttempt = false;
+            // 只有在排滿預定片數時，才進入是否為「正式驗收」的判斷
+            if (itemCount === targetPoemCount) {
+                // 如果後台有啟用 LINE 推播，則跳出對話框詢問關主
+                if (isLineNotifyEnabled) {
+                    isAttempt = confirm('這是一次參加者要求的驗收嗎？\n\n(選擇「是」將發送 LINE 推播並計次)');
+                } else {
+                    // LINE 推播總開關關閉時，一律視為進度同步，不計入正式驗收次數
+                    isAttempt = false;
+                }
+            } else {
+                // 未排滿時按下驗收，只算進度同步，不算正式驗收
+                isAttempt = false;
+            }
+            triggerLiveSync(isAttempt);
         });
     });
 </script>
