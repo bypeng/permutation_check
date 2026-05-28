@@ -1,4 +1,4 @@
-# PTT TAR Final Mission - Permutation Check System
+# PTT TAR 13 Final Mission - Permutation Check System
 
 這是一個為 PTT TAR 13（實境解謎遊戲）的最終回憶任務：《屬於參賽者的賴和詩牆》設計的即時驗收與戰況轉播系統。它基於 Google Apps Script (GAS) 建立，並整合了 Google Sheets 作為資料庫以及 Line Bot 作為即時通知工具。
 
