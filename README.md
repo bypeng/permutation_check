@@ -44,7 +44,7 @@
 1.  **準備資料來源**：根據 `poem_format.py` 和 `player_format.py` 的需求，準備好詩句與參賽者的原始資料檔。範例請見 `player.txt` 、 `poem_correct.txt` 與 `poem_confuse.txt` 。注意！如果沒有混淆專用詩句，請維持 `poem_confuse.txt` 清空；需要混淆詩句的情況則其格式會與 `poem_correct.txt` 相同。
 2.  **生成資料**：執行這兩個 Python 腳本，產生 `poem_correct.json` 、 `poem_confuse.json` 和 `players.json` 。
 3.  **自動建構**：執行 `build_gs_file.py` 腳本。此腳本會讀取 `poem_correct.json` 、 `poem_confuse.json` 和 `players.json`，然後將其內容填入 `Code.gs.template` 中，最終生成一份可以直接使用的 `Code.gs` 檔案。
-4.  **微調寬容順序**：倘若正解中有部份木條的排序可以彼此之間隨意改動 (如範例的 `Code.gs` 中的第 37 句與 38 句) ，可手動微調 weight 欄位。
+4.  **微調寬容順序**：倘若正解中有部份木條的排序可以彼此之間隨意改動 (如範例的 `Code.gs` 中的第 37 句與 38 句) ，可手動微調 `weight` 欄位。
 5.  **實體道具製作**：請依據產生的 `poem_correct_withsn.txt` 與 `poem_confuse_withsn.txt` 指示的編號製作對應的木片道具。
 
 ### 步驟二：Google Apps Script 專案設定
