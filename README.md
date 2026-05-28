@@ -15,16 +15,16 @@
 ## 檔案結構說明
 
 ```
-├── Code.gs                   # 核心後端邏輯，所有 API 與 Line Webhook 的進入點
-├── backend_setting.html      # 大關主後台頁面
-├── live_dashboard.html         # 戰況直播台頁面 (有密碼版)
-├── live_dashboard_wo_passwd.html # 戰況直播台頁面 (無密碼版)
-├── permutation_check.html      # 關主驗收頁面 (有密碼版)
+├── Code.gs                          # 核心後端邏輯，所有 API 與 Line Webhook 的進入點； Code.gs.template 為修改專用範本
+├── backend_setting.html             # 大關主後台頁面
+├── live_dashboard.html              # 戰況直播台頁面 (有密碼版)
+├── live_dashboard_wo_passwd.html    # 戰況直播台頁面 (無密碼版)
+├── permutation_check.html           # 關主驗收頁面 (有密碼版)
 ├── permutation_check_wo_passwd.html # 關主驗收頁面 (無密碼版)
-├── replay_check.html         # 歷史重播頁面
-├── poem_format.py            # [資料生成] 用於從原始資料產生詩句 JSON 的腳本
-├── player_format.py         # [資料生成] 用於從原始資料產生參賽者 JSON 的腳本
-└── build_gs_file.py          # [建構腳本] 將詩句與參賽者資料自動注入 Code.gs 範本中
+├── replay_check.html                # 歷史重播頁面
+├── poem_format.py                   # [資料生成] 用於從原始資料產生詩句 JSON 的腳本
+├── player_format.py                 # [資料生成] 用於從原始資料產生參賽者 JSON 的腳本
+└── build_gs_file.py                 # [建構腳本] 將詩句與參賽者資料自動注入 Code.gs 範本中
 ```
 
 ---
