@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Final Mission 歷史重播 (Replay Dashboard)</title>
+    <style>
+        :root {
+            --item-font-size: 1.35rem;
+            --max-chars: 10;
+        }
+        html { box-sizing: border-box; overflow-x: hidden; }
+        *, *:before, *:after { box-sizing: inherit; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            max-width: 100%;
+            min-width: 0;
+        }
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 15px 30px 15px 20px;
+            min-width: 0;
+            width: 100%;
+        }
+        h2 {
+            margin-top: 0;
+            font-size: 1.8rem;
+            text-align: center;
+            color: #2c3e50;
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+        
+        /* --- 時光機控制面板 --- */
+        .replay-controls {
+            background: #fff;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            width: 100%;
+        }
+        .time-display-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .copy-log-btn {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .copy-log-btn:hover { background-color: #5a6268; }
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+        }
+        .btn-play {
+            padding: 10px 18px;
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: bold;
+            transition: background 0.2s;
+            min-width: 100px;
+        }
+        .btn-play:hover { background-color: #0b5ed7; }
+        .btn-play.playing { background-color: #dc3545; }
+        .btn-play.playing:hover { background-color: #c82333; }
+        
+        #time-slider { 
+            flex: 1; 
+            cursor: pointer;
+            height: 8px;
+            accent-color: #0d6efd;
+        }
+
+        .dashboard-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            width: 100%;
+        }
+        .panel {
+            background: #fff;
+            border: 2px solid #dee2e6; 
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        .panel h3 {
+            margin-top: 0;
+            text-align: left;
+            border-bottom: 1px dashed #ccc;
+            padding-bottom: 10px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .text-green { color: #198754; font-weight: normal; }
+        .text-red-bold { color: #dc3545; font-weight: bold; }
+        .order-badge {
+            display: inline-block;
+            background-color: #6c757d;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: normal;
+        }
+        .empty-message {
+            text-align: center;
+            font-size: 1.3rem;
+            color: #6c757d;
+            padding: 40px 20px;
+            background: #e9ecef;
+            border-radius: 8px;
+        }
+        
+        /* 排序控制區 UI */
+        .sort-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+            background-color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: 1px solid #dee2e6;
+            align-self: center;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 56px;
+            height: 30px;
+            margin: 0;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc; transition: .4s; border-radius: 30px;
+        }
+        .slider:before {
+            position: absolute; content: "";
+            height: 22px; width: 22px; left: 4px; bottom: 4px;
+            background-color: white; transition: .4s; border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        input:checked + .slider { background-color: #198754; }
+        input:checked + .slider:before { transform: translateX(26px); }
+        
+        /* 竹簡排列區相關樣式 */
+        .list-group {
+            list-style: none;
+            padding: 10px 0 0 0;
+            margin: 0;
+            display: flex;
+            flex-direction: row;
+            direction: ltr; 
+            overflow-x: auto;
+            overscroll-behavior-x: none;
+            transform: translateZ(0);
+            overflow-y: hidden;
+            min-height: calc(var(--max-chars) * var(--item-font-size) + 50px);
+            contain: paint;
+            width: 100%;
+        }
+        .list-item {
+            margin: 0 8px;
+            padding: 0;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            user-select: none;
+        }
+        .item-content {
+            padding: 10px 14px;
+            display: inline-block;
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            height: calc(var(--max-chars) * var(--item-font-size) + 50px);
+            font-size: var(--item-font-size);
+            white-space: pre;
+            line-height: 1.2;
+        }
+        .list-item.lis-highlight {
+            background-color: #d1e7dd;
+            border-color: #badbcc;
+            color: #0f5132;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        body.layout-portrait { --item-font-size: 1.65rem; }
+        body.layout-portrait .container { padding: 10px; }
+        body.layout-portrait .item-content { padding: 12px 16px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Final Mission 歷史重播</h2>
+    
+    <!-- 時光機面板 -->
+    <div class="replay-controls" id="replay-controls" style="display: none;">
+        <div class="time-display-wrapper">
+            <span id="relative-time-display">開賽後 00:00:00</span>
+            <button class="copy-log-btn" id="btn-copy-log">📝 複製戰況</button>
+        </div>
+        <div class="slider-row">
+            <button class="btn-play" id="btn-play">▶️ 播放</button>
+            <input type="range" id="time-slider" min="0" max="0" value="0">
+        </div>
+        <div style="text-align: center; color: #666; font-size: 0.9rem;" id="real-time-display">
+            (實際驗收時間: - )
+        </div>
+    </div>
+
+    <div class="sort-controls">
+        <span id="sort-label-arrival" style="font-weight: bold; color: #198754;">依抵達順序</span>
+        <label class="switch">
+            <input type="checkbox" id="sort-toggle">
+            <span class="slider"></span>
+        </label>
+        <span id="sort-label-lis" style="color: #6c757d;">依排對片數</span>
+    </div>
+
+    <div id="dashboard-container" class="dashboard-wrapper">
+        <div class="empty-message" id="loading-msg">⏳ 正在開啟時光機，載入決賽歷史紀錄中...</div>
+    </div>
+</div>
+
+<script>
+    let poemMap = new Map(); 
+    
+    // 重播系統狀態變數
+    let allLogs = [];
+    let startTimeMs = 0;
+    let isPlaying = false;
+    let playTimer = null;
+    let currentlyRenderedTeams = [];
+
+    document.addEventListener("DOMContentLoaded", function() {
+        function checkLayout() {
+            if (window.innerHeight > window.innerWidth) {
+                document.body.classList.add('layout-portrait');
+            } else {
+                document.body.classList.remove('layout-portrait');
+            }
+        }
+        window.addEventListener('resize', checkLayout);
+        window.addEventListener('orientationchange', () => setTimeout(checkLayout, 150));
+        checkLayout();
+
+        // 取得詩詞靜態設定資料
+        if (typeof google !== 'undefined' && google.script) {
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success) {
+                        initPoems(response.data.correctPoems, response.data.confusePoems);
+                        // 詩詞載入後，接著載入全部歷史 Log
+                        fetchReplayData();
+                    } else {
+                        alert('載入詩詞資料失敗。');
+                    }
+                }).getPublicData(); // 直接取得公開資料
+        }
+
+        // 排序開關事件
+        const sortToggle = document.getElementById('sort-toggle');
+        sortToggle.addEventListener('change', () => {
+            const lblArrival = document.getElementById('sort-label-arrival');
+            const lblLis = document.getElementById('sort-label-lis');
+            if (sortToggle.checked) {
+                lblArrival.style.fontWeight = 'normal'; lblArrival.style.color = '#6c757d';
+                lblLis.style.fontWeight = 'bold'; lblLis.style.color = '#198754';
+            } else {
+                lblArrival.style.fontWeight = 'bold'; lblArrival.style.color = '#198754';
+                lblLis.style.fontWeight = 'normal'; lblLis.style.color = '#6c757d';
+            }
+            // 重新渲染目前時間點的畫面
+            renderDashboard(currentlyRenderedTeams); 
+        });
+
+        // 播放按鈕事件
+        document.getElementById('btn-play').addEventListener('click', togglePlay);
+        
+        // 一鍵複製戰況事件
+        document.getElementById('btn-copy-log').addEventListener('click', copyCurrentState);
+    });
+
+    function initPoems(correctPoems, confusePoems) {
+        const allPoems = [...correctPoems, ...confusePoems];
+        allPoems.forEach(p => poemMap.set(p.id.toString(), p));
+
+        let maxChars = 0;
+        allPoems.forEach(p => { 
+            const firstLen = p.firstText.length;
+            const secondLen = p.secondText.length + 2; // 加上兩個全形空白的長度
+            const maxLen = Math.max(firstLen, secondLen);
+            if (maxLen > maxChars) maxChars = maxLen; 
+        });
+        document.documentElement.style.setProperty('--max-chars', maxChars); 
+    }
+
+    function fetchReplayData() {
+        if (typeof google !== 'undefined' && google.script) {
+            google.script.run
+                .withSuccessHandler(response => {
+                    if(response.success) {
+                        initReplaySystem(response.data);
+                    } else {
+                        document.getElementById('loading-msg').textContent = '❌ 載入歷史紀錄失敗';
+                    }
+                }).getReplayLogs();
+        }
+    }
+
+    function initReplaySystem(logs) {
+        allLogs = logs;
+        if(allLogs.length === 0) {
+            document.getElementById('loading-msg').textContent = '目前沒有任何歷史紀錄';
+            return;
+        }
+
+        // 1. 還原/計算各隊抵達順序 (依據在 Log 中首次出現的順序)
+        let arrivalOrderMap = new Map();
+        let orderCounter = 1;
+        allLogs.forEach(log => {
+            if(!arrivalOrderMap.has(log.teamId)) {
+                arrivalOrderMap.set(log.teamId, orderCounter++);
+            }
+            log.challengeOrder = arrivalOrderMap.get(log.teamId);
+        });
+
+        // 2. 統整時間軸 (改為依真實時間的 1 分鐘為單位)
+        startTimeMs = allLogs[0].timestamp;
+        const endTimeMs = allLogs[allLogs.length - 1].timestamp;
+        const totalMinutes = Math.ceil((endTimeMs - startTimeMs) / 60000);
+
+        // 3. 初始滑桿與面板
+        document.getElementById('replay-controls').style.display = 'flex';
+        const slider = document.getElementById('time-slider');
+        slider.max = totalMinutes;
+        slider.value = 0;
+        
+        slider.addEventListener('input', () => {
+            if(isPlaying) togglePlay(); // 手動拉動時暫停播放
+            renderReplayState(slider.value);
+        });
+
+        renderReplayState(0);
+    }
+
+    function togglePlay() {
+        const btn = document.getElementById('btn-play');
+        const slider = document.getElementById('time-slider');
+        
+        if(isPlaying) {
+            clearInterval(playTimer);
+            isPlaying = false;
+            btn.textContent = '▶️ 播放';
+            btn.classList.remove('playing');
+        } else {
+            if(parseInt(slider.value) >= parseInt(slider.max)) {
+                slider.value = 0; // 若到底了，從頭開始
+            }
+            isPlaying = true;
+            btn.textContent = '⏸️ 暫停';
+            btn.classList.add('playing');
+            
+            playTimer = setInterval(() => {
+                let nextVal = parseInt(slider.value) + 1;
+                if(nextVal > parseInt(slider.max)) {
+                    togglePlay(); // 自動停止
+                    return;
+                }
+                slider.value = nextVal;
+                renderReplayState(nextVal);
+            }, 1000); // 每 1 秒播放一幀(一筆進度變更)
+        }
+    }
+
+    // 核心邏輯：計算特定時間點的「最終狀態」，並推給畫面
+    function renderReplayState(minuteOffset) {
+        const currentTimestamp = startTimeMs + minuteOffset * 60000;
+        
+        // 計算與顯示相對時間
+        const h = Math.floor(minuteOffset / 60).toString().padStart(2, '0');
+        const m = Math.floor(minuteOffset % 60).toString().padStart(2, '0');
+        document.getElementById('relative-time-display').textContent = `開賽後 ${h}:${m}:00`;
+        
+        // 顯示真實驗收時間 (除錯或參考用)
+        const realDate = new Date(currentTimestamp);
+        const realTimeStr = `${realDate.getHours().toString().padStart(2, '0')}:${realDate.getMinutes().toString().padStart(2, '0')}:00`;
+        document.getElementById('real-time-display').textContent = `(目前時間軸: ${realTimeStr})`;
+
+        // 掃描 Log，提取「截至目前為止」各隊最新的狀態
+        const teamsState = new Map();
+        const firstReachedLisTime = new Map(); // 記錄 teamId -> Map(lisLength -> timestamp)
+
+        for(let log of allLogs) {
+            if(log.timestamp <= currentTimestamp) {
+                teamsState.set(log.teamId, log);
+                
+                // 記錄各隊「第一次達到該 LIS 片數」的時間
+                let teamReachTimes = firstReachedLisTime.get(log.teamId);
+                if (!teamReachTimes) {
+                    teamReachTimes = new Map();
+                    firstReachedLisTime.set(log.teamId, teamReachTimes);
+                }
+                if (!teamReachTimes.has(log.lisLength)) {
+                    teamReachTimes.set(log.lisLength, log.timestamp);
+                }
+            } else {
+                break; // 已排序，超時直接終止
+            }
+        }
+
+        currentlyRenderedTeams = Array.from(teamsState.values()).map(team => {
+            return Object.assign({}, team, {
+                firstReachedLisTime: firstReachedLisTime.get(team.teamId).get(team.lisLength)
+            });
+        });
+        renderDashboard(currentlyRenderedTeams);
+    }
+
+    // 將產生文字的邏輯寫進來
+    function copyCurrentState() {
+        const timeStr = document.getElementById('relative-time-display').textContent;
+        let text = `📝 【Final Mission 歷史軌跡回溯】\n時間：${timeStr}\n目前戰況：\n`;
+        
+        // 依據目前畫面上的卡片順序來產生文字
+        const container = document.getElementById('dashboard-container');
+        Array.from(container.children).forEach((panel, index) => {
+            if(panel.classList.contains('empty-message')) return;
+            const teamName = panel.querySelector('h3').childNodes[2].textContent.split('：')[0].trim();
+            const lis = panel.querySelector('.text-red-bold').textContent;
+            const attempt = panel.dataset.attemptCount || "0";
+            text += `${index + 1}. ${teamName} (第 ${attempt} 次驗收) - LIS: ${lis}片\n`;
+        });
+
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('btn-copy-log');
+            const originText = btn.innerHTML;
+            btn.innerHTML = '✅ 已複製';
+            setTimeout(() => btn.innerHTML = originText, 2000);
+        }).catch(() => alert('複製失敗'));
+    }
+
+    // --- 原本的 renderDashboard 完全搬過來 (僅小幅微調以相容) ---
+    function renderDashboard(teams) {
+        const container = document.getElementById('dashboard-container');
+        
+        if (teams.length === 0) {
+            container.innerHTML = '<div class="empty-message">⏳ 等待隊伍抵達...</div>';
+            return;
+        }
+        
+        const emptyMsg = container.querySelector('.empty-message');
+        if (emptyMsg) emptyMsg.remove();
+
+        // 1. First (記錄舊位置)
+        const oldPositions = new Map();
+        Array.from(container.children).forEach(panel => {
+            if (panel.dataset.teamId) {
+                oldPositions.set(panel.dataset.teamId, panel.getBoundingClientRect());
+            }
+        });
+
+        // 依據開關決定排序規則
+        const sortByLis = document.getElementById('sort-toggle').checked;
+        if (sortByLis) {
+            teams.sort((a, b) => {
+                if (b.lisLength !== a.lisLength) return b.lisLength - a.lisLength; // 1. 優先比對排對的片數
+                if (a.firstReachedLisTime !== b.firstReachedLisTime) return a.firstReachedLisTime - b.firstReachedLisTime; // 2. 同片數時，越早達到該片數的隊伍排前面
+                return a.challengeOrder - b.challengeOrder;
+            });
+        } else {
+            teams.sort((a, b) => a.challengeOrder - b.challengeOrder);
+        }
+
+        // 2. Update DOM (更新內容與順序)
+        teams.forEach(team => {
+            let panel = container.querySelector(`.panel[data-team-id="${team.teamId}"]`);
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.className = 'panel';
+                panel.dataset.teamId = team.teamId;
+            }
+            
+            // 偷偷把驗收次數藏在 dataset 裡，供複製按鈕使用
+            panel.dataset.attemptCount = team.attemptCount;
+            
+            // 如果驗收次數為 0，顯示「剛抵達」
+            const attemptStr = team.attemptCount == 0 ? "(剛抵達解題中)" : `(第 ${team.attemptCount} 次驗收)`;
+            
+            panel.innerHTML = `
+                <h3>
+                    <span class="order-badge">第 ${team.challengeOrder} 組抵達</span>
+                    ${team.teamName} ${attemptStr}：排了 <span class="text-green">${team.totalCount}</span> 片，排對了 <span class="text-red-bold">${team.lisLength}</span> 片
+                </h3>
+                <ul class="list-group"></ul>
+            `;
+            
+            const listGroup = panel.querySelector('.list-group');
+            const sequence = team.currentSequence || [];
+            
+            sequence.forEach(id => {
+                const poem = poemMap.get(id.toString());
+                if (!poem) return;
+                
+                const li = document.createElement('li');
+                li.className = 'list-item';
+                li.dataset.weight = poem.weight;
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'item-content';
+                contentDiv.textContent = `${poem.firstText}\n　　${poem.secondText}`;
+                
+                li.appendChild(contentDiv);
+                listGroup.appendChild(li);
+            });
+
+            // LIS 運算與高亮
+            if (sequence.length > 0) {
+                const listItems = Array.from(listGroup.querySelectorAll('.list-item'));
+                const logicalItems = [...listItems].reverse(); 
+                const arr = logicalItems.map(item => parseInt(item.dataset.weight, 10));
+                
+                const n = arr.length;
+                const dp = new Array(n).fill(1);
+                const prev = new Array(n).fill(-1);
+                let maxLength = 0, maxIndex = -1;
+
+                for (let i = 0; i < n; i++) {
+                    if (arr[i] > 10000) { dp[i] = 0; continue; }
+                    dp[i] = 1;
+                    for (let j = 0; j < i; j++) {
+                        if (arr[j] > 10000) continue;
+                        if (arr[i] >= arr[j] && dp[i] < dp[j] + 1) {
+                            dp[i] = dp[j] + 1;
+                            prev[i] = j;
+                        }
+                    }
+                    if (dp[i] > maxLength) { maxLength = dp[i]; maxIndex = i; }
+                }
+                
+                const lisIndices = [];
+                let curr = maxIndex;
+                while (curr !== -1) {
+                    lisIndices.unshift(curr);
+                    curr = prev[curr];
+                }
+                
+                logicalItems.forEach((item, index) => {
+                    if (lisIndices.includes(index)) item.classList.add('lis-highlight');
+                });
+            }
+
+            container.appendChild(panel);
+        });
+
+        // 清除沒有在這次渲染名單內的隊伍 (理論上重播只增不減，但安全起見留著)
+        const currentTeamIds = new Set(teams.map(t => t.teamId.toString()));
+        Array.from(container.children).forEach(panel => {
+            if (panel.dataset.teamId && !currentTeamIds.has(panel.dataset.teamId)) panel.remove();
+        });
+
+        // 3. Last & Invert & Play (滑順排序動畫)
+        Array.from(container.children).forEach(panel => {
+            const teamId = panel.dataset.teamId;
+            const oldPos = oldPositions.get(teamId);
+            
+            if (oldPos) {
+                const newPos = panel.getBoundingClientRect();
+                const deltaY = oldPos.top - newPos.top;
+                
+                if (deltaY !== 0) {
+                    panel.style.transition = 'none';
+                    panel.style.transform = `translateY(${deltaY}px)`;
+                    
+                    requestAnimationFrame(() => {
+                        panel.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+                        panel.style.transform = 'translateY(0)';
+                        setTimeout(() => { panel.style.transition = ''; panel.style.transform = ''; }, 600);
+                    });
+                }
+            }
+        });
+    }
+</script>
+</body>
+</html>

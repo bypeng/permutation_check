@@ -61,10 +61,24 @@ function doGet(e) {
         .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
   }
   
-  // 3. 預設載入關主的驗收頁面路由
-  const file = isPasswordFree ? 'permutation_check_wo_passwd' : 'permutation_check';
-  return HtmlService.createHtmlOutputFromFile(file)
-      .setTitle('Final Mission 驗收系統')
+  // 3. 關主的驗收頁面路由 (?p=check)
+  if (e && e.parameter && e.parameter.p === 'check') {
+    const file = isPasswordFree ? 'permutation_check_wo_passwd' : 'permutation_check';
+    return HtmlService.createHtmlOutputFromFile(file)
+        .setTitle('Final Mission 驗收系統')
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+  }
+
+  // 4. 歷史重播資料 API 路由 (?p=getReplayData)
+  if (e && e.parameter && e.parameter.p === 'getReplayData') {
+    const replayData = getReplayLogs();
+    return ContentService.createTextOutput(JSON.stringify(replayData))
+        .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // 5. 預設載入歷史重播頁面路由 (無參數或未知參數)
+  return HtmlService.createHtmlOutputFromFile('replay_check')
+      .setTitle('Final Mission 歷史重播')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
 }
 
@@ -101,6 +115,17 @@ function authenticateAndGetData(inputPassword) {
     };
   }
   return { success: false };
+}
+
+// 取得公開的靜態資料 (供無密碼的重播系統使用，因活動已結束，題目可公開)
+function getPublicData() {
+  return {
+    success: true,
+    data: {
+      correctPoems: POEM_CORRECT_DATA,
+      confusePoems: POEM_CONFUSE_DATA
+    }
+  };
 }
 
 // --- 後台管理 API ---
@@ -335,6 +360,44 @@ function getLiveStatus() {
     cache.put(cacheKey, JSON.stringify(result), 5);
 
     return { success: true, data: result, cached: false };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+// 供前端重播系統呼叫的讀取 API (回傳所有驗收歷史紀錄)
+function getReplayLogs() {
+  try {
+    const ss = SpreadsheetApp.openById(LIVE_SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SUBMIT_RECORD_SHEET_NAME);
+    
+    if (!sheet) {
+      return { success: true, data: [] };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const result = [];
+
+    // 略過第一列標題，從 i = 1 開始
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row[0]) continue; // 略過空行
+      
+      result.push({
+        teamId: row[0].toString(),
+        teamName: row[1],
+        timestamp: new Date(row[2]).getTime(), // 轉為毫秒時間戳，方便前端計算相對時間與排序
+        totalCount: row[3],
+        lisLength: row[4],
+        attemptCount: row[5],
+        currentSequence: JSON.parse(row[6] || '[]')
+      });
+    }
+
+    // 雙重保險：即使試算表已經手動排好，程式端仍確實執行一次依時間戳由早到晚排序
+    result.sort((a, b) => a.timestamp - b.timestamp);
+
+    return { success: true, data: result };
   } catch (e) {
     return { success: false, error: e.toString() };
   }
