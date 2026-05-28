@@ -1,6 +1,6 @@
 # PTT TAR Final Mission - Permutation Check System
 
-這是一個為 PTT TAR（實境解謎遊戲）的最終關卡設計的即時驗收與戰況轉播系統。它基於 Google Apps Script (GAS) 建立，並整合了 Google Sheets 作為資料庫以及 Line Bot 作為即時通知工具。
+這是一個為 PTT TAR 13（實境解謎遊戲）的最終回憶任務：《屬於參賽者的賴和詩牆》設計的即時驗收與戰況轉播系統。它基於 Google Apps Script (GAS) 建立，並整合了 Google Sheets 作為資料庫以及 Line Bot 作為即時通知工具。
 
 ## 系統特色
 
@@ -22,8 +22,8 @@
 ├── permutation_check.html      # 關主驗收頁面 (有密碼版)
 ├── permutation_check_wo_passwd.html # 關主驗收頁面 (無密碼版)
 ├── replay_check.html         # 歷史重播頁面
-├── generate_poems.py         # [資料生成] 用於從原始資料產生詩句 JSON 的腳本
-├── generate_players.py       # [資料生成] 用於從原始資料產生參賽者 JSON 的腳本
+├── poem_format.py            # [資料生成] 用於從原始資料產生詩句 JSON 的腳本
+├── player_format.py         # [資料生成] 用於從原始資料產生參賽者 JSON 的腳本
 └── build_gs_file.py          # [建構腳本] 將詩句與參賽者資料自動注入 Code.gs 範本中
 ```
 
@@ -41,9 +41,10 @@
 
 ### 步驟一：資料準備與建構
 
-1.  **準備資料來源**：根據 `generate_poems.py` 和 `generate_players.py` 的需求，準備好詩句與參賽者的原始資料檔。範例請見 `player.txt` 、 `poem_correct.txt` 與 `poem_confuse.txt` 。注意！如果沒有混淆專用詩句，請維持 `poem_confuse.txt` 清空；需要混淆詩句的情況則其格式會與 `poem_correct.txt` 相同。
-2.  **生成資料**：執行這兩個 Python 腳本，產生 `poems.json` 和 `players.json`。
-3.  **自動建構**：執行 `build_gs_file.py` 腳本。此腳本會讀取 `poems.json` 和 `players.json`，然後將其內容填入 `Code.gs.template` 中，最終生成一份可以直接使用的 `Code.gs` 檔案。
+1.  **準備資料來源**：根據 `poem_format.py` 和 `player_format.py` 的需求，準備好詩句與參賽者的原始資料檔。範例請見 `player.txt` 、 `poem_correct.txt` 與 `poem_confuse.txt` 。注意！如果沒有混淆專用詩句，請維持 `poem_confuse.txt` 清空；需要混淆詩句的情況則其格式會與 `poem_correct.txt` 相同。
+2.  **生成資料**：執行這兩個 Python 腳本，產生 `poem_correct.json` 、 `poem_confuse.json` 和 `players.json` 。
+3.  **自動建構**：執行 `build_gs_file.py` 腳本。此腳本會讀取 `poem_correct.json` 、 `poem_confuse.json` 和 `players.json`，然後將其內容填入 `Code.gs.template` 中，最終生成一份可以直接使用的 `Code.gs` 檔案。
+4.  **實體道具製作**：請依據產生的 `poem_correct_withsn.txt` 與 `poem_confuse_withsn.txt` 指示的編號製作對應的木片道具。
 
 ### 步驟二：Google Apps Script 專案設定
 

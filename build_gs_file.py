@@ -5,7 +5,8 @@ import os
 # --- Configuration ---
 TEMPLATE_FILE = 'Code.gs.template'
 OUTPUT_FILE = 'Code.gs'
-POEMS_JSON_FILE = 'poems.json' # 預期 generate_poems.py 的產出檔案
+POEMS_CORRECT_JSON_FILE = 'poem_correct.json' # 預期 poem_format.py 的產出檔案
+POEMS_CONFUSE_JSON_FILE = 'poem_confuse.json' # 預期 poem_format.py 的產出檔案
 PLAYERS_JSON_FILE = 'players.json' # 預期 generate_players.py 的產出檔案
 
 # --- Placeholders in template ---
@@ -23,12 +24,15 @@ def main():
 
     try:
         # --- 1. 讀取 JSON 資料檔案 ---
-        print(f"-> Reading '{POEMS_JSON_FILE}'...")
-        with open(POEMS_JSON_FILE, 'r', encoding='utf-8') as f:
-            poems_data = json.load(f)
-            # 使用 ensure_ascii=False 以正確處理中文字元
-            correct_poems_str = json.dumps(poems_data.get('correct', []), indent=2, ensure_ascii=False)
-            confuse_poems_str = json.dumps(poems_data.get('confuse', []), indent=2, ensure_ascii=False)
+        print(f"-> Reading '{POEMS_CORRECT_JSON_FILE}'...")
+        with open(POEMS_CORRECT_JSON_FILE, 'r', encoding='utf-8') as f:
+            correct_poems_data = json.load(f)
+            correct_poems_str = json.dumps(correct_poems_data, indent=2, ensure_ascii=False)
+
+        print(f"-> Reading '{POEMS_CONFUSE_JSON_FILE}'...")
+        with open(POEMS_CONFUSE_JSON_FILE, 'r', encoding='utf-8') as f:
+            confuse_poems_data = json.load(f)
+            confuse_poems_str = json.dumps(confuse_poems_data, indent=2, ensure_ascii=False)
 
         print(f"-> Reading '{PLAYERS_JSON_FILE}'...")
         with open(PLAYERS_JSON_FILE, 'r', encoding='utf-8') as f:
@@ -55,7 +59,7 @@ def main():
 
     except FileNotFoundError as e:
         print(f"\n❌ ERROR: Required file not found: {e.filename}")
-        print(f"Please make sure '{TEMPLATE_FILE}', '{POEMS_JSON_FILE}', and '{PLAYERS_JSON_FILE}' exist in the same directory.")
+        print(f"Please make sure '{TEMPLATE_FILE}', '{POEMS_CORRECT_JSON_FILE}', '{POEMS_CONFUSE_JSON_FILE}', and '{PLAYERS_JSON_FILE}' exist in the same directory.")
         sys.exit(1)
     except (json.JSONDecodeError, Exception) as e:
         print(f"\n❌ An unexpected error occurred: {e}")
