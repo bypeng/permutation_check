@@ -168,9 +168,9 @@
 <div class="container" style="display: none;">
     <h2>Final Mission 大關主後台</h2>
     
-    <!-- 第一段落：系統模式設定 -->
+    <!-- 第一段落：系統全域設定 -->
     <div class="panel">
-        <h3>系統存取模式</h3>
+        <h3>系統全域設定</h3>
         <div class="setting-item">
             <div class="setting-label">
                 啟用無密碼模式<br>
@@ -178,6 +178,16 @@
             </div>
             <label class="switch">
                 <input type="checkbox" id="toggle-password-free">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="setting-item">
+            <div class="setting-label">
+                啟用 LINE 主動推播<br>
+                <small style="color: #6c757d; font-size: 0.95rem;">(開啟後，前台達標驗收時將允許觸發群組推播)</small>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="toggle-line-notify">
                 <span class="slider"></span>
             </label>
         </div>
@@ -227,6 +237,7 @@
                         currentAdminPassword = pwd;
                         initBackend({
                             isPasswordFree: false,
+                            isLineNotifyEnabled: false,
                             advancedTeams: [1, 2, 4], // 預設 3 組晉級
                             allPlayers: [
                                 {"id": 1, "p1name": "餅餅", "p2name": "小當家", "relationship": "模範夫妻"},
@@ -252,9 +263,10 @@
             saveBtn.disabled = true;
 
             const isPasswordFree = document.getElementById('toggle-password-free').checked;
+            const isLineNotifyEnabled = document.getElementById('toggle-line-notify').checked;
             const advancedTeams = Array.from(document.querySelectorAll('.team-toggle:checked')).map(cb => parseInt(cb.value, 10));
 
-            const settings = { isPasswordFree, advancedTeams };
+            const settings = { isPasswordFree, isLineNotifyEnabled, advancedTeams };
 
             if (typeof google !== 'undefined' && google.script) {
                 google.script.run
@@ -284,6 +296,7 @@
 
         // 設定密碼模式開關
         document.getElementById('toggle-password-free').checked = data.isPasswordFree;
+        document.getElementById('toggle-line-notify').checked = !!data.isLineNotifyEnabled;
 
         // 產生晉級隊伍清單
         const listContainer = document.getElementById('team-list-container');

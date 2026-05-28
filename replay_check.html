@@ -208,7 +208,6 @@
             margin: 0 8px;
             padding: 0;
             flex-shrink: 0;
-            width: 3.3rem;
             display: flex;
             justify-content: center;
             background-color: #fff;
@@ -224,7 +223,7 @@
             text-orientation: upright;
             height: calc(var(--max-chars) * var(--item-font-size) + 50px);
             font-size: var(--item-font-size);
-            white-space: nowrap;
+            white-space: pre;
             line-height: 1.2;
         }
         .list-item.lis-highlight {
@@ -338,8 +337,13 @@
         allPoems.forEach(p => poemMap.set(p.id.toString(), p));
 
         let maxChars = 0;
-        allPoems.forEach(p => { if (p.firstText.length > maxChars) maxChars = p.firstText.length; });
-        document.documentElement.style.setProperty('--max-chars', maxChars + 2); 
+        allPoems.forEach(p => { 
+            const firstLen = p.firstText.length;
+            const secondLen = p.secondText.length + 2; // 加上兩個全形空白的長度
+            const maxLen = Math.max(firstLen, secondLen);
+            if (maxLen > maxChars) maxChars = maxLen; 
+        });
+        document.documentElement.style.setProperty('--max-chars', maxChars); 
     }
 
     function fetchReplayData() {
@@ -555,7 +559,7 @@
                 
                 const contentDiv = document.createElement('div');
                 contentDiv.className = 'item-content';
-                contentDiv.textContent = `${poem.firstText} ⋮`;
+                contentDiv.textContent = `${poem.firstText}\n　　${poem.secondText}`;
                 
                 li.appendChild(contentDiv);
                 listGroup.appendChild(li);

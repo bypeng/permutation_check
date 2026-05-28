@@ -181,6 +181,17 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
+        /* 新增淡出淡入動畫所需樣式 */
+        .panel h3,
+        .panel .list-group {
+            transition: opacity 0.2s ease-in-out;
+            opacity: 1;
+        }
+        .panel h3.fade-out,
+        .panel .list-group.fade-out {
+            opacity: 0;
+        }
+        
         /* 登入畫面相關樣式 */
         #login-overlay {
             position: fixed;
@@ -257,6 +268,8 @@
     let poemMap = new Map(); // 儲存 ID 對應的詩句資訊
     let syncInterval = null;
     let lastFetchedData = null; // 暫存最後一次抓到的資料，切換排序時可直接重排
+    let previousTeamDataStr = new Map(); // 記錄前次資料狀態以比對差異
+    let renderQueue = Promise.resolve(); // 確保渲染循序執行避免動畫衝突
 
     document.addEventListener("DOMContentLoaded", function() {
         function checkLayout() {
@@ -362,6 +375,11 @@
     }
 
     function renderDashboard(response) {
+        renderQueue = renderQueue.then(() => performRender(response)).catch(console.error);
+    }
+
+    async function performRender(response) {
+        let isManualSort = false;
         // 若有新資料則更新暫存，若無則使用暫存資料 (為了切換排序按鈕)
         if (response) {
             if (!response.success) return;
@@ -369,13 +387,13 @@
         } else {
             response = lastFetchedData;
             if (!response || !response.success) return;
+            isManualSort = true;
         }
 
         const now = new Date();
         document.getElementById('last-sync-time').textContent = `(最後更新: ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')})`;
 
         const container = document.getElementById('dashboard-container');
-
         const teams = response.data || [];
         
         // 完全沒有資料時顯示提示
@@ -388,115 +406,189 @@
         const emptyMsg = container.querySelector('.empty-message');
         if (emptyMsg) emptyMsg.remove();
 
-        // --- FLIP 動畫: 1. First (記錄舊位置) ---
+        // 判斷哪些隊伍資料有變動
+        const changedTeamIds = new Set();
+        if (!isManualSort) {
+            teams.forEach(team => {
+                const teamIdStr = team.teamId.toString();
+                const currentDataStr = JSON.stringify({
+                    seq: team.currentSequence,
+                    count: team.totalCount,
+                    lis: team.lisLength
+                });
+                if (previousTeamDataStr.get(teamIdStr) !== currentDataStr) {
+                    changedTeamIds.add(teamIdStr);
+                    previousTeamDataStr.set(teamIdStr, currentDataStr);
+                }
+            });
+        }
+
+        // 若無變更且非手動排序，且已渲染過，直接略過以節省資源
+        if (!isManualSort && changedTeamIds.size === 0 && container.children.length > 0) {
+            return;
+        }
+
+        // ==========================================
+        // 階段一：內容更新 (先淡出 -> 抽換內容 -> 再淡入)
+        // ==========================================
+        if (changedTeamIds.size > 0 && container.children.length > 0) {
+            changedTeamIds.forEach(teamId => {
+                const panel = container.querySelector(`.panel[data-team-id="${teamId}"]`);
+                if (panel) {
+                    const h3 = panel.querySelector('h3');
+                    const listGroup = panel.querySelector('.list-group');
+                    if (h3) h3.classList.add('fade-out');
+                    if (listGroup) listGroup.classList.add('fade-out');
+                }
+            });
+            // 等待淡出動畫
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        // 抽換內容 (建立新隊伍 or 更新現有隊伍，但不改變 DOM 順序)
+        teams.forEach(team => {
+            const teamIdStr = team.teamId.toString();
+            let panel = container.querySelector(`.panel[data-team-id="${teamIdStr}"]`);
+            let isNewPanel = false;
+            
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.className = 'panel';
+                panel.dataset.teamId = teamIdStr;
+                isNewPanel = true;
+            }
+            
+            if (isNewPanel || changedTeamIds.has(teamIdStr) || !panel.hasChildNodes()) {
+                panel.innerHTML = `
+                    <h3>
+                        <span class="order-badge">第 ${team.challengeOrder} 組抵達</span>
+                        ${team.teamName} ：排了 <span class="text-green">${team.totalCount}</span> 片，排對了 <span class="text-red-bold">${team.lisLength}</span> 片
+                    </h3>
+                    <ul class="list-group"></ul>
+                `;
+                
+                const listGroup = panel.querySelector('.list-group');
+                const h3 = panel.querySelector('h3');
+
+                // 若是剛被淡出的 panel，更新內容後要先維持 opacity 0
+                if (changedTeamIds.has(teamIdStr) && !isNewPanel) {
+                    h3.classList.add('fade-out');
+                    listGroup.classList.add('fade-out');
+                }
+                
+                const sequence = team.currentSequence || [];
+                
+                sequence.forEach(id => {
+                    const poem = poemMap.get(id.toString());
+                    if (!poem) return;
+                    
+                    const li = document.createElement('li');
+                    li.className = 'list-item';
+                    li.dataset.weight = poem.weight;
+                    
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'item-content';
+                    contentDiv.textContent = `${poem.firstText} ⋮`;
+                    
+                    li.appendChild(contentDiv);
+                    listGroup.appendChild(li);
+                });
+
+                if (sequence.length > 0) {
+                    const listItems = Array.from(listGroup.querySelectorAll('.list-item'));
+                    const logicalItems = [...listItems].reverse(); 
+                    const arr = logicalItems.map(item => parseInt(item.dataset.weight, 10));
+                    
+                    const n = arr.length;
+                    const dp = new Array(n).fill(1);
+                    const prev = new Array(n).fill(-1);
+                    let maxLength = 0, maxIndex = -1;
+
+                    for (let i = 0; i < n; i++) {
+                        if (arr[i] > 10000) { dp[i] = 0; continue; }
+                        dp[i] = 1;
+                        for (let j = 0; j < i; j++) {
+                            if (arr[j] > 10000) continue;
+                            if (arr[i] >= arr[j] && dp[i] < dp[j] + 1) {
+                                dp[i] = dp[j] + 1;
+                                prev[i] = j;
+                            }
+                        }
+                        if (dp[i] > maxLength) { maxLength = dp[i]; maxIndex = i; }
+                    }
+                    
+                    const lisIndices = [];
+                    let curr = maxIndex;
+                    while (curr !== -1) {
+                        lisIndices.unshift(curr);
+                        curr = prev[curr];
+                    }
+                    
+                    logicalItems.forEach((item, index) => {
+                        if (lisIndices.includes(index)) item.classList.add('lis-highlight');
+                    });
+                }
+            }
+
+            if (isNewPanel) {
+                container.appendChild(panel);
+            }
+        });
+
+        if (changedTeamIds.size > 0 && container.children.length > 0) {
+            container.offsetHeight; // 強制重繪
+            
+            changedTeamIds.forEach(teamId => {
+                const panel = container.querySelector(`.panel[data-team-id="${teamId}"]`);
+                if (panel) {
+                    const h3 = panel.querySelector('h3');
+                    const listGroup = panel.querySelector('.list-group');
+                    if (h3) h3.classList.remove('fade-out');
+                    if (listGroup) listGroup.classList.remove('fade-out');
+                }
+            });
+            // 等待淡入動畫
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        // ==========================================
+        // 階段二：排序與 FLIP 滑動動畫
+        // ==========================================
+        
+        // 1. First (記錄舊位置)
         const oldPositions = new Map();
         Array.from(container.children).forEach(panel => {
             if (panel.dataset.teamId) {
                 oldPositions.set(panel.dataset.teamId, panel.getBoundingClientRect());
             }
         });
+        
+        // 移除已經不存在的隊伍 (在此時移除，讓底下的卡片能順利滑動上來)
+        const currentTeamIds = new Set(teams.map(t => t.teamId.toString()));
+        Array.from(container.children).forEach(panel => {
+            if (panel.dataset.teamId && !currentTeamIds.has(panel.dataset.teamId)) panel.remove();
+        });
 
-        // 根據開關狀態決定排序方式
         const sortByLis = document.getElementById('sort-toggle').checked;
-
         if (sortByLis) {
-            // 依照 LIS 長度降冪排序，若相同則依總片數升冪(片數越少越厲害)，若再相同則依抵達順位
             teams.sort((a, b) => {
                 if (b.lisLength !== a.lisLength) return b.lisLength - a.lisLength;
                 if (a.totalCount !== b.totalCount) return a.totalCount - b.totalCount; 
                 return a.challengeOrder - b.challengeOrder;
             });
         } else {
-            // 依照挑戰順位 (challengeOrder) 由小到大排序
             teams.sort((a, b) => a.challengeOrder - b.challengeOrder);
         }
 
-        // --- FLIP 動畫: 2. Update DOM (更新內容與順序) ---
+        // 2. 依照新排序重新附加 DOM (觸發物理位置變更)
         teams.forEach(team => {
-            let panel = container.querySelector(`.panel[data-team-id="${team.teamId}"]`);
-            if (!panel) {
-                panel = document.createElement('div');
-                panel.className = 'panel';
-                panel.dataset.teamId = team.teamId;
+            const panel = container.querySelector(`.panel[data-team-id="${team.teamId}"]`);
+            if (panel) {
+                container.appendChild(panel);
             }
-            
-            // 依照要求格式化標題
-            panel.innerHTML = `
-                <h3>
-                    <span class="order-badge">第 ${team.challengeOrder} 組抵達</span>
-                    ${team.teamName} ：排了 <span class="text-green">${team.totalCount}</span> 片，排對了 <span class="text-red-bold">${team.lisLength}</span> 片
-                </h3>
-                <ul class="list-group"></ul>
-            `;
-            
-            const listGroup = panel.querySelector('.list-group');
-            const sequence = team.currentSequence || [];
-            
-            // 產生方塊 (僅顯示 firstText 和 ⋮)
-            sequence.forEach(id => {
-                const poem = poemMap.get(id.toString());
-                if (!poem) return;
-                
-                const li = document.createElement('li');
-                li.className = 'list-item';
-                li.dataset.weight = poem.weight; // 保留 weight 供 LIS 計算
-                
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'item-content';
-                contentDiv.textContent = `${poem.firstText} ⋮`;
-                
-                li.appendChild(contentDiv);
-                listGroup.appendChild(li);
-            });
-
-            // 執行 LIS 演算法並亮綠燈
-            if (sequence.length > 0) {
-                const listItems = Array.from(listGroup.querySelectorAll('.list-item'));
-                const logicalItems = [...listItems].reverse(); // 邏輯反轉，供 LIS 正確計算
-                const arr = logicalItems.map(item => parseInt(item.dataset.weight, 10));
-                
-                const n = arr.length;
-                const dp = new Array(n).fill(1);
-                const prev = new Array(n).fill(-1);
-                let maxLength = 0, maxIndex = -1;
-
-                for (let i = 0; i < n; i++) {
-                    if (arr[i] > 10000) { dp[i] = 0; continue; }
-                    dp[i] = 1;
-                    for (let j = 0; j < i; j++) {
-                        if (arr[j] > 10000) continue;
-                        if (arr[i] >= arr[j] && dp[i] < dp[j] + 1) {
-                            dp[i] = dp[j] + 1;
-                            prev[i] = j;
-                        }
-                    }
-                    if (dp[i] > maxLength) { maxLength = dp[i]; maxIndex = i; }
-                }
-                
-                const lisIndices = [];
-                let curr = maxIndex;
-                while (curr !== -1) {
-                    lisIndices.unshift(curr);
-                    curr = prev[curr];
-                }
-                
-                // 替符合 LIS 的方塊加上亮綠燈 class
-                logicalItems.forEach((item, index) => {
-                    if (lisIndices.includes(index)) item.classList.add('lis-highlight');
-                });
-            }
-
-            // 將 panel 附加回 container，這會自動改變 DOM 的物理順序
-            container.appendChild(panel);
         });
 
-        // 移除已經不存在的隊伍 (防呆)
-        const currentTeamIds = new Set(teams.map(t => t.teamId.toString()));
-        Array.from(container.children).forEach(panel => {
-            if (panel.dataset.teamId && !currentTeamIds.has(panel.dataset.teamId)) panel.remove();
-        });
-
-        // --- FLIP 動畫: 3. Last & Invert & Play ---
+        // 3. Last & Invert & Play
         Array.from(container.children).forEach(panel => {
             const teamId = panel.dataset.teamId;
             const oldPos = oldPositions.get(teamId);

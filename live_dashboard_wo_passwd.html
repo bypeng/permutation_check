@@ -173,6 +173,17 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
+        /* 新增淡出淡入動畫所需樣式 */
+        .panel h3,
+        .panel .list-group {
+            transition: opacity 0.2s ease-in-out;
+            opacity: 1;
+        }
+        .panel h3.fade-out,
+        .panel .list-group.fade-out {
+            opacity: 0;
+        }
+        
         body.layout-portrait { --item-font-size: 1.65rem; }
         body.layout-portrait .container { padding: 10px; }
         body.layout-portrait .item-content { padding: 12px 16px; }
@@ -201,6 +212,8 @@
     let poemMap = new Map(); 
     let syncInterval = null;
     let lastFetchedData = null; 
+    let previousTeamDataStr = new Map();
+    let renderQueue = Promise.resolve();
 
     document.addEventListener("DOMContentLoaded", function() {
         function checkLayout() {
@@ -282,12 +295,18 @@
     }
 
     function renderDashboard(response) {
+        renderQueue = renderQueue.then(() => performRender(response)).catch(console.error);
+    }
+
+    async function performRender(response) {
+        let isManualSort = false;
         if (response) {
             if (!response.success) return;
             lastFetchedData = response;
         } else {
             response = lastFetchedData;
             if (!response || !response.success) return;
+            isManualSort = true;
         }
 
         const now = new Date();
@@ -304,12 +323,153 @@
         const emptyMsg = container.querySelector('.empty-message');
         if (emptyMsg) emptyMsg.remove();
 
+        const changedTeamIds = new Set();
+        if (!isManualSort) {
+            teams.forEach(team => {
+                const teamIdStr = team.teamId.toString();
+                const currentDataStr = JSON.stringify({
+                    seq: team.currentSequence,
+                    count: team.totalCount,
+                    lis: team.lisLength
+                });
+                if (previousTeamDataStr.get(teamIdStr) !== currentDataStr) {
+                    changedTeamIds.add(teamIdStr);
+                    previousTeamDataStr.set(teamIdStr, currentDataStr);
+                }
+            });
+        }
+
+        if (!isManualSort && changedTeamIds.size === 0 && container.children.length > 0) {
+            return;
+        }
+
+        if (changedTeamIds.size > 0 && container.children.length > 0) {
+            changedTeamIds.forEach(teamId => {
+                const panel = container.querySelector(`.panel[data-team-id="${teamId}"]`);
+                if (panel) {
+                    const h3 = panel.querySelector('h3');
+                    const listGroup = panel.querySelector('.list-group');
+                    if (h3) h3.classList.add('fade-out');
+                    if (listGroup) listGroup.classList.add('fade-out');
+                }
+            });
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        teams.forEach(team => {
+            const teamIdStr = team.teamId.toString();
+            let panel = container.querySelector(`.panel[data-team-id="${teamIdStr}"]`);
+            let isNewPanel = false;
+            
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.className = 'panel';
+                panel.dataset.teamId = teamIdStr;
+                isNewPanel = true;
+            }
+            
+            if (isNewPanel || changedTeamIds.has(teamIdStr) || !panel.hasChildNodes()) {
+                panel.innerHTML = `
+                    <h3>
+                        <span class="order-badge">第 ${team.challengeOrder} 組抵達</span>
+                        ${team.teamName} ：排了 <span class="text-green">${team.totalCount}</span> 片，排對了 <span class="text-red-bold">${team.lisLength}</span> 片
+                    </h3>
+                    <ul class="list-group"></ul>
+                `;
+                
+                const listGroup = panel.querySelector('.list-group');
+                const h3 = panel.querySelector('h3');
+
+                if (changedTeamIds.has(teamIdStr) && !isNewPanel) {
+                    h3.classList.add('fade-out');
+                    listGroup.classList.add('fade-out');
+                }
+                
+                const sequence = team.currentSequence || [];
+                
+                sequence.forEach(id => {
+                    const poem = poemMap.get(id.toString());
+                    if (!poem) return;
+                    
+                    const li = document.createElement('li');
+                    li.className = 'list-item';
+                    li.dataset.weight = poem.weight;
+                    
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'item-content';
+                    contentDiv.textContent = `${poem.firstText} ⋮`;
+                    
+                    li.appendChild(contentDiv);
+                    listGroup.appendChild(li);
+                });
+
+                if (sequence.length > 0) {
+                    const listItems = Array.from(listGroup.querySelectorAll('.list-item'));
+                    const logicalItems = [...listItems].reverse(); 
+                    const arr = logicalItems.map(item => parseInt(item.dataset.weight, 10));
+                    
+                    const n = arr.length;
+                    const dp = new Array(n).fill(1);
+                    const prev = new Array(n).fill(-1);
+                    let maxLength = 0, maxIndex = -1;
+
+                    for (let i = 0; i < n; i++) {
+                        if (arr[i] > 10000) { dp[i] = 0; continue; }
+                        dp[i] = 1;
+                        for (let j = 0; j < i; j++) {
+                            if (arr[j] > 10000) continue;
+                            if (arr[i] >= arr[j] && dp[i] < dp[j] + 1) {
+                                dp[i] = dp[j] + 1;
+                                prev[i] = j;
+                            }
+                        }
+                        if (dp[i] > maxLength) { maxLength = dp[i]; maxIndex = i; }
+                    }
+                    
+                    const lisIndices = [];
+                    let curr = maxIndex;
+                    while (curr !== -1) {
+                        lisIndices.unshift(curr);
+                        curr = prev[curr];
+                    }
+                    
+                    logicalItems.forEach((item, index) => {
+                        if (lisIndices.includes(index)) item.classList.add('lis-highlight');
+                    });
+                }
+            }
+
+            if (isNewPanel) {
+                container.appendChild(panel);
+            }
+        });
+
+        if (changedTeamIds.size > 0 && container.children.length > 0) {
+            container.offsetHeight; 
+            
+            changedTeamIds.forEach(teamId => {
+                const panel = container.querySelector(`.panel[data-team-id="${teamId}"]`);
+                if (panel) {
+                    const h3 = panel.querySelector('h3');
+                    const listGroup = panel.querySelector('.list-group');
+                    if (h3) h3.classList.remove('fade-out');
+                    if (listGroup) listGroup.classList.remove('fade-out');
+                }
+            });
+            await new Promise(r => setTimeout(r, 200));
+        }
+
         // 1. First (記錄舊位置)
         const oldPositions = new Map();
         Array.from(container.children).forEach(panel => {
             if (panel.dataset.teamId) {
                 oldPositions.set(panel.dataset.teamId, panel.getBoundingClientRect());
             }
+        });
+        
+        const currentTeamIds = new Set(teams.map(t => t.teamId.toString()));
+        Array.from(container.children).forEach(panel => {
+            if (panel.dataset.teamId && !currentTeamIds.has(panel.dataset.teamId)) panel.remove();
         });
 
         const sortByLis = document.getElementById('sort-toggle').checked;
@@ -323,83 +483,12 @@
             teams.sort((a, b) => a.challengeOrder - b.challengeOrder);
         }
 
-        // 2. Update DOM (更新內容與順序)
+        // 2. 依照新排序重新附加 DOM
         teams.forEach(team => {
-            let panel = container.querySelector(`.panel[data-team-id="${team.teamId}"]`);
-            if (!panel) {
-                panel = document.createElement('div');
-                panel.className = 'panel';
-                panel.dataset.teamId = team.teamId;
+            const panel = container.querySelector(`.panel[data-team-id="${team.teamId}"]`);
+            if (panel) {
+                container.appendChild(panel);
             }
-            
-            panel.innerHTML = `
-                <h3>
-                    <span class="order-badge">第 ${team.challengeOrder} 組抵達</span>
-                    ${team.teamName} ：排了 <span class="text-green">${team.totalCount}</span> 片，排對了 <span class="text-red-bold">${team.lisLength}</span> 片
-                </h3>
-                <ul class="list-group"></ul>
-            `;
-            
-            const listGroup = panel.querySelector('.list-group');
-            const sequence = team.currentSequence || [];
-            
-            sequence.forEach(id => {
-                const poem = poemMap.get(id.toString());
-                if (!poem) return;
-                
-                const li = document.createElement('li');
-                li.className = 'list-item';
-                li.dataset.weight = poem.weight;
-                
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'item-content';
-                contentDiv.textContent = `${poem.firstText} ⋮`;
-                
-                li.appendChild(contentDiv);
-                listGroup.appendChild(li);
-            });
-
-            if (sequence.length > 0) {
-                const listItems = Array.from(listGroup.querySelectorAll('.list-item'));
-                const logicalItems = [...listItems].reverse(); 
-                const arr = logicalItems.map(item => parseInt(item.dataset.weight, 10));
-                
-                const n = arr.length;
-                const dp = new Array(n).fill(1);
-                const prev = new Array(n).fill(-1);
-                let maxLength = 0, maxIndex = -1;
-
-                for (let i = 0; i < n; i++) {
-                    if (arr[i] > 10000) { dp[i] = 0; continue; }
-                    dp[i] = 1;
-                    for (let j = 0; j < i; j++) {
-                        if (arr[j] > 10000) continue;
-                        if (arr[i] >= arr[j] && dp[i] < dp[j] + 1) {
-                            dp[i] = dp[j] + 1;
-                            prev[i] = j;
-                        }
-                    }
-                    if (dp[i] > maxLength) { maxLength = dp[i]; maxIndex = i; }
-                }
-                
-                const lisIndices = [];
-                let curr = maxIndex;
-                while (curr !== -1) {
-                    lisIndices.unshift(curr);
-                    curr = prev[curr];
-                }
-                
-                logicalItems.forEach((item, index) => {
-                    if (lisIndices.includes(index)) item.classList.add('lis-highlight');
-                });
-            }
-
-            container.appendChild(panel);
-        });
-
-        const currentTeamIds = new Set(teams.map(t => t.teamId.toString()));
-        Array.from(container.children).forEach(panel => {
-            if (panel.dataset.teamId && !currentTeamIds.has(panel.dataset.teamId)) panel.remove();
         });
 
         // 3. Last & Invert & Play
