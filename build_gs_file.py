@@ -7,7 +7,7 @@ TEMPLATE_FILE = 'Code.gs.template'
 OUTPUT_FILE = 'Code.gs'
 POEMS_CORRECT_JSON_FILE = 'poem_correct.json' # 預期 poem_format.py 的產出檔案
 POEMS_CONFUSE_JSON_FILE = 'poem_confuse.json' # 預期 poem_format.py 的產出檔案
-PLAYERS_JSON_FILE = 'players.json' # 預期 generate_players.py 的產出檔案
+PLAYERS_JSON_FILE = 'player.json' # 預期 generate_players.py 的產出檔案
 
 # --- Placeholders in template ---
 # 這些是將在範本檔案中被取代的字串標記
