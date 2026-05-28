@@ -41,21 +41,9 @@
 
 ### 步驟一：資料準備與建構
 
-1.  **準備資料來源**：根據 `generate_poems.py` 和 `generate_players.py` 的需求，準備好詩句與參賽者的原始資料檔 (例如 CSV 或 Excel)。
+1.  **準備資料來源**：根據 `generate_poems.py` 和 `generate_players.py` 的需求，準備好詩句與參賽者的原始資料檔。範例請見 `player.txt` 、 `poem_correct.txt` 與 `poem_confuse.txt` 。注意！如果沒有混淆專用詩句，請維持 `poem_confuse.txt` 清空；需要混淆詩句的情況則其格式會與 `poem_correct.txt` 相同。
 2.  **生成資料**：執行這兩個 Python 腳本，產生 `poems.json` 和 `players.json`。
-3.  **建立 `Code.gs` 範本**：將現有的 `Code.gs` 複製一份並命名為 `Code.gs.template`。接著，將 `POEM_CORRECT_DATA`、`POEM_CONFUSE_DATA` 和 `PLAYER_DATA` 三個陣列的內容清空，或用一個特殊的標記取代，例如：
-    ```javascript
-    const POEM_CORRECT_DATA = __POEM_CORRECT_DATA__;
-    const POEM_CONFUSE_DATA = __POEM_CONFUSE_DATA__;
-    const PLAYER_DATA = __PLAYER_DATA__;
-    ```
-4.  **自動建構**：執行 `build_gs_file.py` 腳本。此腳本會讀取 `poems.json` 和 `players.json`，然後將其內容填入 `Code.gs.template` 中，最終生成一份可以直接使用的 `Code.gs` 檔案。
-
-    > **[!] 設計提示**：`build_gs_file.py` 的核心是讀取範本與 JSON 檔案，然後進行字串取代。一個健壯的腳本應包含：
-    > 1.  **檔案讀取**：使用 `try...except` 處理 `FileNotFoundError`。
-    > 2.  **JSON 解析**：處理 `json.JSONDecodeError`，以防 JSON 格式錯誤。
-    > 3.  **字元編碼**：讀寫檔案時明確指定 `encoding='utf-8'`，並在 `json.dumps` 中使用 `ensure_ascii=False`，確保中文不會變成亂碼。
-    > 4.  **字串取代**：將 `Code.gs.template` 中的 `'__PLACEHOLDER__'` 字串，取代為 `json.dumps` 產生的內容。
+3.  **自動建構**：執行 `build_gs_file.py` 腳本。此腳本會讀取 `poems.json` 和 `players.json`，然後將其內容填入 `Code.gs.template` 中，最終生成一份可以直接使用的 `Code.gs` 檔案。
 
 ### 步驟二：Google Apps Script 專案設定
 
@@ -99,7 +87,7 @@
 
 ### 步驟七：綁定群組並上線！
 
-1.  由任一位已加入 `ADMIN_DATA` 的大關主，在**步驟六所建立的 Line 群組**中發言 `/取得GroupID然後綁定`。
+1.  由任一位已加入 `ADMIN_DATA` 的大關主，在**步驟六所建立的 Line 群組**或者**另外建立的 Timestamp 回報專用群組**中邀請 Bot 加入，並發言 `/取得GroupID然後綁定`。
 2.  Bot 若回覆「✅ ...已經綁定群組成功！」，代表系統已與此群組連動。
 3.  大功告成！現在你可以開始使用各個系統介面了。
 
